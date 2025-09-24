@@ -1,6 +1,7 @@
 const app = require('./app/main/app');
 const database = require('./config/database');
 const logger = require('./app/utils/logger');
+require('./models');
 
 const server = app
     .listen(process.env.PORT, () => {

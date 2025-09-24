@@ -2,28 +2,17 @@ const UserModel = require('./user_model');
 const BaseService = require('../../base/base_service');
 const { validatePasswordStrength, checkPersonalInfo } = require('../../../../utils/password-validator');
 const { cleanUserData } = require('../../../../utils/data-cleaner');
-const {
-    generateSecret,
-    generateQRCode,
-    verifyToken,
-    generateBackupCodes,
-    verifyBackupCode,
-    removeBackupCode,
-    getCurrentToken
-} = require('../../../../utils/2fa-utils');
-const googleOAuth2 = require('../../../../utils/google-oauth2');
-const AuthProvider = require('../../../../providers/auth_provider');
 const { Op } = require('sequelize');
+const { generateTokenUser } = require('../../../../utils/jwt');
 
 class UserService extends BaseService {
     constructor() {
         super();
         this._userModel = UserModel;
-        this._authProvider = new AuthProvider();
     }
 
     async register(userData) {
-        const requiredFields = ['name', 'email', 'password'];
+        const requiredFields = ['name', 'email', 'cpf', 'password'];
         for (const field of requiredFields) {
             if (!userData[field]) {
                 throw new Error(`${field.toUpperCase()}_REQUIRED`);
@@ -45,13 +34,16 @@ class UserService extends BaseService {
 
         const existingUser = await this._userModel.findOne({
             where: {
-                [Op.or]: [{ email: userData.email.toLowerCase() }]
+                [Op.or]: [{ email: userData.email.toLowerCase() }, { cpf: userData.cpf }]
             }
         });
 
         if (existingUser) {
             if (existingUser.email === userData.email.toLowerCase()) {
                 throw new Error('EMAIL_ALREADY_EXISTS');
+            }
+            if (existingUser.cpf === userData.cpf) {
+                throw new Error('CPF_ALREADY_EXISTS');
             }
         }
 
@@ -68,181 +60,33 @@ class UserService extends BaseService {
             role: cleanedUserData.role || 'BUYER'
         });
 
-        const tokens = await this._authProvider.generateTokens(user);
+        const tokenUser = await this.creteGenerateTokenUser({ userId: user.id });
 
-        return {
-            userId: user.id,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken
-        };
+        return tokenUser;
     }
 
     async login(credentials) {
-        const user = await this._userModel.findByEmail(credentials.email);
-
+        const user = await this._userModel.findOne({ where: { cpf: credentials.cpf } });
         if (!user) {
             throw new Error('INVALID_CREDENTIALS');
-        }
-
-        if (!user.is_active) {
-            throw new Error('USER_INACTIVE');
-        }
-
-        if (user.isAccountLocked()) {
-            throw new Error('ACCOUNT_LOCKED');
         }
 
         const isValidPassword = await user.validatePassword(credentials.password);
         if (!isValidPassword) {
-            await user.incrementFailedLoginAttempts();
             throw new Error('INVALID_CREDENTIALS');
         }
-
-        await user.resetFailedLoginAttempts();
 
         user.last_login = new Date();
         await user.save();
 
-        if (user.two_factor_enabled) {
-            return {
-                requires2FA: true,
-                userId: user.id,
-                message: '2FA token required to complete login'
-            };
-        }
+        const tokenUser = await this.creteGenerateTokenUser({ userId: user.id });
 
-        const tokens = await this._authProvider.generateTokens(user);
-
-        return {
-            userId: user.id,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken
-        };
+        return tokenUser;
     }
 
-    async authenticateWithGoogle(code) {
-        try {
-            const googleUser = await googleOAuth2.verifyCode(code);
-
-            if (!googleUser.email) {
-                throw new Error('GOOGLE_AUTH_FAILED');
-            }
-
-            let user = await this._userModel.findByEmail(googleUser.email);
-
-            if (!user) {
-                // Create new user from Google data
-                const newUserData = {
-                    name: googleUser.name,
-                    email: googleUser.email,
-                    google_id: googleUser.id,
-                    email_verified: true,
-                    role: 'BUYER'
-                };
-
-                user = await this._userModel.createWithHash(newUserData);
-            } else {
-                // Update existing user with Google ID if not already set
-                if (!user.google_id) {
-                    user.google_id = googleUser.id;
-                    await user.save();
-                }
-            }
-
-            if (!user.is_active) {
-                throw new Error('USER_INACTIVE');
-            }
-
-            if (user.isAccountLocked()) {
-                throw new Error('ACCOUNT_LOCKED');
-            }
-
-            user.last_login = new Date();
-            await user.save();
-
-            if (user.two_factor_enabled) {
-                return {
-                    requires2FA: true,
-                    userId: user.id,
-                    message: '2FA token required to complete Google login'
-                };
-            }
-
-            const tokens = await this._authProvider.generateTokens(user);
-
-            return {
-                userId: user.id,
-                accessToken: tokens.accessToken,
-                refreshToken: tokens.refreshToken,
-                user: {
-                    id: user.id,
-                    name: user.name,
-                    email: user.email,
-                    role: user.role
-                }
-            };
-        } catch (error) {
-            console.error('Google authentication error:', error);
-            throw error;
-        }
-    }
-
-    async completeGoogleLoginWith2FA(userId, { token, backupCode }) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        if (!user.two_factor_enabled) {
-            throw new Error('2FA_NOT_ENABLED');
-        }
-
-        const verificationResult = await this.verify2FA(userId, { token, backupCode });
-
-        if (!verificationResult) {
-            throw new Error('INVALID_2FA_TOKEN');
-        }
-
-        const tokens = await this._authProvider.generateTokens(user);
-
-        return {
-            userId: user.id,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                role: user.role
-            },
-            message: 'Google login completed successfully with 2FA'
-        };
-    }
-
-    async completeLoginWith2FA(userId, { token, backupCode }) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        if (!user.two_factor_enabled) {
-            throw new Error('2FA_NOT_ENABLED');
-        }
-
-        const verificationResult = await this.verify2FA(userId, { token, backupCode });
-
-        if (!verificationResult) {
-            throw new Error('INVALID_2FA_TOKEN');
-        }
-
-        const tokens = await this._authProvider.generateTokens(user);
-
-        return {
-            userId: user.id,
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-            message: 'Login completed successfully with 2FA'
-        };
+    async creteGenerateTokenUser(payload) {
+        const token = generateTokenUser(payload);
+        return token;
     }
 
     async logout(token = null) {
@@ -273,8 +117,8 @@ class UserService extends BaseService {
         }
     }
 
-    async forgotPassword(email) {
-        const user = await this._userModel.findByEmail(email);
+    async forgotPassword(cpf) {
+        const user = await this._userModel.findByCPF(cpf);
 
         if (!user) {
             return { message: 'RECOVERY_EMAIL_SENT' };
@@ -346,8 +190,8 @@ class UserService extends BaseService {
         }
     }
 
-    async resendVerification(email) {
-        const user = await this._userModel.findByEmail(email);
+    async resendVerification(cpf) {
+        const user = await this._userModel.findByCPF(cpf);
 
         if (!user) {
             return { message: 'VERIFICATION_EMAIL_SENT' };
@@ -452,220 +296,6 @@ class UserService extends BaseService {
 
         await user.update({ is_active: true });
         return user;
-    }
-
-    async init2FA(userId) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        if (user.two_factor_enabled) {
-            throw new Error('2FA_ALREADY_ENABLED');
-        }
-
-        const { secret, otpauthUrl } = generateSecret({
-            name: 'Henrique Store',
-            issuer: 'Henrique Store',
-            account: user.email
-        });
-
-        const qrCode = await generateQRCode(otpauthUrl);
-
-        const backupCodes = generateBackupCodes(8, 8);
-
-        await user.update({
-            temp_2fa_secret: secret,
-            backup_codes: backupCodes
-        });
-
-        return {
-            secret,
-            otpauthUrl,
-            qrCode,
-            backupCodes,
-            message: 'Scan the QR code with your authenticator app or enter the secret manually'
-        };
-    }
-
-    async verify2FASetup(userId, { token }) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        if (!user.temp_2fa_secret) {
-            throw new Error('2FA_NOT_INITIALIZED');
-        }
-
-        if (user.two_factor_enabled) {
-            throw new Error('2FA_ALREADY_ENABLED');
-        }
-
-        const isValid = verifyToken({
-            token,
-            secret: user.temp_2fa_secret
-        });
-
-        if (!isValid) {
-            throw new Error('INVALID_2FA_TOKEN');
-        }
-
-        await user.update({
-            two_factor_enabled: true,
-            two_factor_secret: user.temp_2fa_secret,
-            temp_2fa_secret: null
-        });
-
-        return {
-            message: '2FA has been successfully enabled',
-            backupCodes: user.backup_codes
-        };
-    }
-
-    async disable2FA(userId, { currentPassword }) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        if (!user.two_factor_enabled) {
-            throw new Error('2FA_NOT_ENABLED');
-        }
-
-        const isValidPassword = await user.validatePassword(currentPassword);
-        if (!isValidPassword) {
-            throw new Error('INVALID_PASSWORD');
-        }
-
-        await user.update({
-            two_factor_enabled: false,
-            two_factor_secret: null,
-            backup_codes: null,
-            temp_2fa_secret: null
-        });
-
-        return {
-            message: '2FA has been successfully disabled'
-        };
-    }
-
-    async verify2FA(userId, { token, backupCode }) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        if (!user.two_factor_enabled) {
-            throw new Error('2FA_NOT_ENABLED');
-        }
-
-        if (backupCode) {
-            const isValidBackupCode = verifyBackupCode(backupCode, user.backup_codes);
-            if (!isValidBackupCode) {
-                throw new Error('INVALID_BACKUP_CODE');
-            }
-
-            const updatedBackupCodes = removeBackupCode(backupCode, user.backup_codes);
-            await user.update({ backup_codes: updatedBackupCodes });
-
-            return {
-                message: 'Backup code verified successfully',
-                remainingBackupCodes: updatedBackupCodes.length
-            };
-        }
-
-        if (!token) {
-            throw new Error('TOKEN_REQUIRED');
-        }
-
-        const isValid = verifyToken({
-            token,
-            secret: user.two_factor_secret
-        });
-
-        if (!isValid) {
-            throw new Error('INVALID_2FA_TOKEN');
-        }
-
-        return {
-            message: '2FA token verified successfully'
-        };
-    }
-
-    async generateNewBackupCodes(userId, { currentPassword }) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        if (!user.two_factor_enabled) {
-            throw new Error('2FA_NOT_ENABLED');
-        }
-
-        const isValidPassword = await user.validatePassword(currentPassword);
-        if (!isValidPassword) {
-            throw new Error('INVALID_PASSWORD');
-        }
-
-        const newBackupCodes = generateBackupCodes(8, 8);
-
-        await user.update({
-            backup_codes: newBackupCodes
-        });
-
-        return {
-            backupCodes: newBackupCodes,
-            message: 'New backup codes generated successfully'
-        };
-    }
-
-    async enable2FA(userId) {
-        return this.init2FA(userId);
-    }
-
-    async updateConsent(userId, consentData) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        const updateData = {};
-
-        if (consentData.dataProcessingConsent !== undefined) {
-            updateData.data_processing_consent = consentData.dataProcessingConsent;
-            if (consentData.dataProcessingConsent) {
-                updateData.consent_date = new Date();
-            }
-        }
-
-        if (consentData.marketingConsent !== undefined) {
-            updateData.marketing_consent = consentData.marketingConsent;
-        }
-
-        if (consentData.newsletterSubscription !== undefined) {
-            updateData.newsletter_subscription = consentData.newsletterSubscription;
-        }
-
-        await user.update(updateData);
-        return user;
-    }
-
-    async requestDataDeletion(userId) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        const deletionDate = new Date();
-        deletionDate.setDate(deletionDate.getDate() + 30);
-
-        await user.update({
-            data_deletion_requested: true,
-            data_deletion_date: deletionDate
-        });
-
-        return true;
     }
 
     async list({ page = 1, limit = 20, is_active, role, search }) {
@@ -774,97 +404,6 @@ class UserService extends BaseService {
         }
 
         await user.update({ is_active: false });
-        return user;
-    }
-
-    async changeRole(id, newRole) {
-        const user = await this._userModel.findByPk(id);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        const allowedRoles = ['ADMIN', 'BUYER', 'SELLER'];
-        if (!allowedRoles.includes(newRole)) {
-            throw new Error('INVALID_ROLE');
-        }
-
-        const oldRole = user.role;
-        await user.update({ role: newRole });
-
-        return { ...user.toJSON(), oldRole };
-    }
-
-    async unlockAccount(id) {
-        const user = await this._userModel.findByPk(id);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        await user.update({
-            failed_login_attempts: 0,
-            locked_until: null
-        });
-
-        return user;
-    }
-
-    async getSellerProfile(userId) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user || user.role !== 'SELLER') {
-            throw new Error('SELLER_PROFILE_NOT_FOUND');
-        }
-
-        return user;
-    }
-
-    async updateSellerProfile(userId, data) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user || user.role !== 'SELLER') {
-            throw new Error('SELLER_PROFILE_NOT_FOUND');
-        }
-
-        const allowedFields = ['name', 'phone', 'address', 'preferences'];
-        const updateData = {};
-
-        for (const field of allowedFields) {
-            if (data[field] !== undefined) {
-                updateData[field] = data[field];
-            }
-        }
-
-        const cleanedUpdateData = cleanUserData(updateData);
-
-        await user.update(cleanedUpdateData);
-        return user;
-    }
-
-    async getBuyerProfile(userId) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user || user.role !== 'BUYER') {
-            throw new Error('BUYER_PROFILE_NOT_FOUND');
-        }
-
-        return user;
-    }
-
-    async updateBuyerProfile(userId, data) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user || user.role !== 'BUYER') {
-            throw new Error('BUYER_PROFILE_NOT_FOUND');
-        }
-
-        const allowedFields = ['name', 'phone', 'birth_date', 'gender', 'address', 'preferences'];
-        const updateData = {};
-
-        for (const field of allowedFields) {
-            if (data[field] !== undefined) {
-                updateData[field] = data[field];
-            }
-        }
-
-        const cleanedUpdateData = cleanUserData(updateData);
-
-        await user.update(cleanedUpdateData);
         return user;
     }
 }

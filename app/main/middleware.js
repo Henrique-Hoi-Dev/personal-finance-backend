@@ -1,77 +1,13 @@
+const keys = require('../../app/utils/error_mapping');
+const User = require('../api/v1/business/user/user_model');
 const ev = require('express-validation');
 const _ = require('lodash');
 const ValidationsErrorHandler = require('./validations_error_handler');
 const validationsErrorHandler = new ValidationsErrorHandler();
-const keys = require('../../app/utils/error_mapping');
-const AuthProvider = require('../../app/providers/auth_provider');
+
+const { verifyTokenUser } = require('../utils/jwt');
 
 const logger = require('../utils/logger');
-
-function logError(err, req, res, next) {
-    try {
-        if (err) {
-            logger.error('logError');
-            logger.error(err);
-            logger.error(JSON.stringify(err, null, 2));
-            return next(err);
-        } else {
-            return next();
-        }
-    } catch (error) {
-        logger.error('logError catch');
-        logger.error(error);
-
-        if (err) {
-            return next(err);
-        } else {
-            return next();
-        }
-    }
-}
-
-function handleError(err, req, res, next) {
-    if (err) {
-        if (err.response && err.response.status && err.response.data) {
-            res.status(err.response.status).json(err.response.data);
-            return;
-        }
-
-        err.key = err.key || err.message || 'UNKNOWN_ERROR';
-        err.errorCode = keys[err.key] || 500;
-
-        const message = require('../../locale/error/en.json');
-        err.message = message[err.key] || err.message || 'Internal server error';
-
-        if (err instanceof ev.ValidationError || err.error === 'Unprocessable Entity') {
-            err = validationsErrorHandler.errorResponse(err);
-        } else if (err instanceof Error) {
-            err = _.pick(err, [
-                'message',
-                'status',
-                'key',
-                'errorCode',
-                'local',
-                'field',
-                'reasons',
-                'registered',
-                'rejected'
-            ]);
-        }
-
-        const status = err.status || 422;
-        delete err.status;
-        res.status(status).json(err);
-    } else {
-        next();
-    }
-}
-
-function throw404(req, res, next) {
-    let err = new Error();
-    err.status = 404;
-    err.message = 'API_ENDPOINT_NOT_FOUND';
-    next(err);
-}
 
 async function verifyToken(req, res, next) {
     try {
@@ -94,9 +30,36 @@ async function verifyToken(req, res, next) {
         }
 
         try {
-            const authProvider = new AuthProvider();
-            const userData = await authProvider.verifyToken(token);
-            req.locals = { ...req.locals, user: userData };
+            const decoded = verifyTokenUser(token);
+
+            const user = await User.findByPk(decoded.userId);
+
+            if (!user) {
+                const error = new Error('USER_NOT_FOUND');
+                error.status = 401;
+                error.key = 'USER_NOT_FOUND';
+                return next(error);
+            }
+
+            if (!user.is_active) {
+                const error = new Error('USER_INACTIVE');
+                error.status = 401;
+                error.key = 'USER_INACTIVE';
+                return next(error);
+            }
+
+            req.locals = {
+                ...req.locals,
+                user: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.email,
+                    cpf: user.cpf,
+                    is_active: user.is_active,
+                    email_verified: user.email_verified
+                }
+            };
+
             next();
         } catch (error) {
             logger.error('Token verification error:', error.message);
@@ -104,12 +67,12 @@ async function verifyToken(req, res, next) {
             let errorMessage = 'INVALID_TOKEN';
             let errorKey = 'INVALID_TOKEN';
 
-            if (error.status === 401) {
+            if (error.name === 'TokenExpiredError') {
                 errorMessage = 'TOKEN_EXPIRED';
                 errorKey = 'TOKEN_EXPIRED';
-            } else if (error.status === 403) {
-                errorMessage = 'TOKEN_BLACKLISTED';
-                errorKey = 'TOKEN_BLACKLISTED';
+            } else if (error.name === 'JsonWebTokenError') {
+                errorMessage = 'INVALID_TOKEN_SIGNATURE';
+                errorKey = 'INVALID_TOKEN_SIGNATURE';
             }
 
             const err = new Error(errorMessage);
@@ -128,7 +91,6 @@ async function verifyToken(req, res, next) {
 
 async function ensureAuthorization(req, res, next) {
     const authHeader = req.header('Authorization');
-
     if (!authHeader) {
         const err = new Error('TOKEN_REQUIRED');
         err.status = 401;
@@ -144,6 +106,52 @@ async function ensureAuthorization(req, res, next) {
     }
 
     next();
+}
+
+function logError(err, req, res, next) {
+    try {
+        if (err) {
+            logger.error({ status: err?.status, message: err?.message }, 'logError');
+            return next(err);
+        } else {
+            return next();
+        }
+    } catch (error) {
+        logger.error({ status: error?.status, message: error?.message }, 'logError catch');
+        if (err) {
+            return next(err);
+        } else {
+            return next();
+        }
+    }
+}
+
+function handleError(err, req, res, next) {
+    if (err) {
+        if (err.response) res.status(err.response.status).json(err.response.data);
+        err.key = err.key ? err.key : err.message;
+        err.errorCode = keys[err.key];
+        err.message = res.__(err.message);
+
+        if (err instanceof ev.ValidationError) {
+            err = validationsErrorHandler.errorResponse(err);
+        } else if (err instanceof Error) {
+            err = _.pick(err, ['message', 'status', 'key', 'errorCode']);
+        }
+
+        const status = err.status || 422;
+        delete err.status;
+        res.status(status).json(err);
+    } else {
+        next();
+    }
+}
+
+function throw404(req, res, next) {
+    const err = new Error();
+    err.status = 404;
+    err.message = 'API_ENDPOINT_NOT_FOUND';
+    next(err);
 }
 
 function errorHandler(err, req, res, next) {
@@ -237,6 +245,28 @@ function errorHandler(err, req, res, next) {
         });
     }
 
+    if (err.key === 'USER_NOT_FOUND') {
+        return res.status(401).json({
+            error: {
+                message: 'Usuário não encontrado.',
+                status: 401,
+                key: 'USER_NOT_FOUND',
+                errorCode: keys['USER_NOT_FOUND'] || 401
+            }
+        });
+    }
+
+    if (err.key === 'USER_INACTIVE') {
+        return res.status(401).json({
+            error: {
+                message: 'Usuário inativo. Entre em contato com o suporte.',
+                status: 401,
+                key: 'USER_INACTIVE',
+                errorCode: keys['USER_INACTIVE'] || 401
+            }
+        });
+    }
+
     res.status(err.status || 500).json({
         error: {
             message: err.message || 'Erro interno do servidor',
@@ -248,10 +278,10 @@ function errorHandler(err, req, res, next) {
 }
 
 module.exports = {
-    errorHandler,
     logError,
     handleError,
     throw404,
+    errorHandler,
     verifyToken,
     ensureAuthorization
 };

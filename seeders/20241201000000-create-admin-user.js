@@ -11,9 +11,9 @@ module.exports = {
                 {
                     id: '550e8400-e29b-41d4-a716-446655440000',
                     name: 'Administrador',
-                    email: 'admin@henrique-store.com',
-                    password: hashedPassword,
-                    role: 'ADMIN',
+                    email: 'admin@example.com',
+                    hash_password: hashedPassword,
+                    cpf: '12345678901',
                     is_active: true,
                     email_verified: true,
                     created_at: new Date(),
@@ -28,7 +28,7 @@ module.exports = {
         return queryInterface.bulkDelete(
             'Users',
             {
-                email: 'admin@henrique-store.com'
+                email: 'admin@example.com'
             },
             {}
         );

@@ -1,8 +1,7 @@
 FROM node:18-alpine
 
 # Criar usuário não-root para segurança
-RUN addgroup -g 1001 -S nodejs
-RUN adduser -S nodejs -u 1001
+RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 # Instalar dependências do sistema
 RUN apk add --no-cache dumb-init
@@ -12,7 +11,7 @@ WORKDIR /app
 # Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar dependências
+# Instalar dependências somente de produção
 RUN npm ci --only=production && npm cache clean --force
 
 # Copiar código fonte

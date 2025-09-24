@@ -1,9 +1,7 @@
 const axios = require('axios');
 const logger = require('../../../utils/logger');
 
-const EXTERNAL_SERVICES = {
-    auth: process.env.AUTH_MS_URL
-};
+const EXTERNAL_SERVICES = {};
 
 class BaseIntegration {
     constructor(serviceName) {

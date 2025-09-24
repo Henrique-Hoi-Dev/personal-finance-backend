@@ -1,38 +1,37 @@
-version: '3.8'
+version: '3.9'
+
 services:
-    postgres:
-        image: postgres:15
-        container_name: henrique_store_db
+    db:
+        image: postgres:16
+        container_name: finance_db
+        restart: always
         environment:
-            POSTGRES_DB: henrique_store
             POSTGRES_USER: postgres
             POSTGRES_PASSWORD: postgres
+            POSTGRES_DB: finance
         ports:
-            - '5432:5432'
+            - '5433:5432'
         volumes:
             - postgres_data:/var/lib/postgresql/data
-        networks:
-            - henrique_store_network
 
-    api:
+    app:
         build: .
-        container_name: henrique_store_api
-        command: npm run dev
-        env_file: [.env]
-        volumes:
-            - .:/usr/app/current
-            - /usr/app/current/node_modules
-        ports:
-            - '3000:3000'
-            - '9229:9229'
+        container_name: finance_app
+        restart: always
         depends_on:
-            - postgres
-        networks:
-            - henrique_store_network
+            - db
+        environment:
+            NODE_ENV: production
+            DB_HOST: db
+            DB_USER: postgres
+            DB_PASSWORD: postgres
+            DB_NAME: finance
+            DB_PORT: 5432
+            PORT: 3001
+            TZ: 'America/Sao_Paulo'
+        ports:
+            - '3001:3001'
+        command: ['node', 'server.js']
 
 volumes:
     postgres_data:
-
-networks:
-    henrique_store_network:
-        driver: bridge

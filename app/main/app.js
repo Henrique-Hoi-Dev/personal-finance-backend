@@ -7,7 +7,6 @@ const bodyParser = require('body-parser');
 const compress = require('compression');
 const cors = require('cors');
 const hpp = require('hpp');
-const session = require('express-session');
 const i18n = require('i18n');
 const middle = require('./middleware');
 const addRouters = require('./routers');
@@ -22,14 +21,6 @@ const pinoHttp = require('pino-http')({
         return 'info';
     }
 });
-const csrf = require('csurf');
-const csrfProtection = csrf({
-    cookie: true,
-    ignoreMethods: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    ignorePaths: ['/health', '/v1/health']
-});
-
-const memoryStore = new session.MemoryStore();
 
 const app = express();
 
@@ -66,14 +57,14 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(
     bodyParser.json({
-        limit: '50mb',
+        limit: '10mb',
         verify: rawBodySaver
     })
 );
 app.use(
     bodyParser.urlencoded({
         verify: rawBodySaver,
-        limit: '50mb',
+        limit: '10mb',
         extended: true
     })
 );
@@ -98,40 +89,7 @@ app.use(helmet.hidePoweredBy());
 app.use(helmet.xssFilter());
 app.use(helmet.referrerPolicy({ policy: 'strict-origin-when-cross-origin' }));
 
-app.use((req, res, next) => {
-    res.set('X-Content-Type-Options', 'nosniff');
-    res.set('X-Frame-Options', 'DENY');
-    res.set('X-XSS-Protection', '1; mode=block');
-    res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-
-    const cspPolicy = [
-        "default-src 'self'",
-        "script-src 'self'",
-        "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: https:",
-        "font-src 'self'",
-        "connect-src 'self'",
-        "frame-ancestors 'none'",
-        "base-uri 'self'",
-        "form-action 'self'"
-    ].join('; ');
-
-    res.set('Content-Security-Policy', cspPolicy);
-
-    return next();
-});
-
-app.use(
-    session({
-        secret: process.env.SESSION_SECRET,
-        resave: false,
-        saveUninitialized: true,
-        store: memoryStore
-    })
-);
-
 app.use(cookieParser());
-app.use(csrfProtection);
 
 app.use('/v1/', routers.v1);
 app.use('/', routers.v1);
