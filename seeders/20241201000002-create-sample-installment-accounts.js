@@ -1,5 +1,7 @@
 'use strict';
 
+const crypto = require('crypto');
+
 module.exports = {
     up: async (queryInterface, Sequelize) => {
         // Buscar o usuário admin criado anteriormente
@@ -14,14 +16,14 @@ module.exports = {
 
         const adminUserId = users[0].id;
 
-        // Criar contas de exemplo
+        // Criar contas de exemplo (valores em centavos)
         const accounts = [
             {
-                id: Sequelize.UUIDV4(),
+                id: crypto.randomUUID(),
                 user_id: adminUserId,
                 name: 'Financiamento Casa',
                 type: 'LOAN',
-                total_amount: 360000.0,
+                total_amount: 36000000, // R$ 360.000,00 em centavos
                 installments: 240,
                 start_date: '2024-01-15',
                 due_day: 15,
@@ -29,11 +31,11 @@ module.exports = {
                 updated_at: new Date()
             },
             {
-                id: Sequelize.UUIDV4(),
+                id: crypto.randomUUID(),
                 user_id: adminUserId,
                 name: 'Cartão de Crédito Nubank',
                 type: 'CREDIT_CARD',
-                total_amount: 5000.0,
+                total_amount: 500000, // R$ 5.000,00 em centavos
                 installments: 12,
                 start_date: '2024-02-01',
                 due_day: 10,
@@ -41,7 +43,7 @@ module.exports = {
                 updated_at: new Date()
             },
             {
-                id: Sequelize.UUIDV4(),
+                id: crypto.randomUUID(),
                 user_id: adminUserId,
                 name: 'Energia Elétrica',
                 type: 'FIXED',
@@ -51,11 +53,11 @@ module.exports = {
                 updated_at: new Date()
             },
             {
-                id: Sequelize.UUIDV4(),
+                id: crypto.randomUUID(),
                 user_id: adminUserId,
                 name: 'Netflix',
                 type: 'SUBSCRIPTION',
-                total_amount: 45.9,
+                total_amount: 4590, // R$ 45,90 em centavos
                 installments: 1,
                 start_date: '2024-01-01',
                 due_day: 1,
@@ -86,7 +88,7 @@ module.exports = {
                 dueDate.setDate(account.due_day);
 
                 installments.push({
-                    id: Sequelize.UUIDV4(),
+                    id: crypto.randomUUID(),
                     account_id: account.id,
                     number: i,
                     due_date: dueDate,

@@ -8,34 +8,34 @@ class InstallmentController extends BaseController {
         this._installmentService = new InstallmentService();
     }
 
-    async getById(req, res) {
+    async getById(req, res, next) {
         try {
             const { id } = req.params;
             const data = await this._installmentService.getById(id);
             res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
         } catch (error) {
-            res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
+            next(this.handleError(error));
         }
     }
 
-    async markAsPaid(req, res) {
+    async markAsPaid(req, res, next) {
         try {
             const { id } = req.params;
             const userId = req.locals.user.id;
             const data = await this._installmentService.markAsPaid(id, userId);
             res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
         } catch (error) {
-            res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
+            next(this.handleError(error));
         }
     }
 
-    async delete(req, res) {
+    async delete(req, res, next) {
         try {
             const { id } = req.params;
             await this._installmentService.delete(id);
             res.status(HttpStatus.status.NO_CONTENT).json();
         } catch (error) {
-            res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
+            next(this.handleError(error));
         }
     }
 }

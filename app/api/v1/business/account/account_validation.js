@@ -50,11 +50,32 @@ const updateSchema = Joi.object({
         'object.min': 'Pelo menos um campo deve ser fornecido para atualização'
     });
 
+const getAllValidation = Joi.object({
+    userId: Joi.string().uuid().optional().messages({
+        'string.guid': 'ID do usuário deve ser um UUID válido'
+    }),
+    type: Joi.string().valid('FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER').optional(),
+    limit: Joi.number().integer().min(1).max(100).optional().messages({
+        'number.base': 'Limite deve ser um número',
+        'number.integer': 'Limite deve ser um número inteiro',
+        'number.min': 'Limite deve ser maior que 0',
+        'number.max': 'Limite deve ser menor que 100'
+    }),
+    page: Joi.number().integer().min(0).optional().messages({
+        'number.base': 'Página deve ser um número',
+        'number.integer': 'Página deve ser um número inteiro',
+        'number.min': 'Página deve ser maior que 0'
+    })
+});
+
 module.exports = {
     create: {
         body: createSchema
     },
     update: {
         body: updateSchema
+    },
+    getAll: {
+        query: getAllValidation
     }
 };

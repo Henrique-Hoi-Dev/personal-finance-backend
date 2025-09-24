@@ -33,6 +33,12 @@ const Account = sequelize.define(
                 isIn: [['FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER']]
             }
         },
+        isPaid: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+            field: 'is_paid'
+        },
         totalAmount: {
             type: DataTypes.DECIMAL(10, 2),
             allowNull: true,
@@ -86,82 +92,12 @@ const Account = sequelize.define(
             {
                 fields: ['due_day']
             }
-        ],
-        hooks: {
-            afterCreate: async (account) => {
-                if (account.installments && account.installments > 0 && account.totalAmount) {
-                    const Installment = require('../installment/installment_model');
-                    await Installment.createInstallments(
-                        account.id,
-                        account.totalAmount,
-                        account.installments,
-                        account.startDate,
-                        account.dueDay
-                    );
-                }
-            }
-        }
+        ]
+        // Hooks removed - business logic moved to AccountService
     }
 );
 
-// Instance methods
-Account.prototype.getInstallments = async function () {
-    const Installment = require('../installment/installment_model');
-    return await Installment.findByAccount(this.id);
-};
-
-Account.prototype.getUnpaidInstallments = async function () {
-    const Installment = require('../installment/installment_model');
-    return await Installment.findUnpaidByAccount(this.id);
-};
-
-Account.prototype.getOverdueInstallments = async function () {
-    const Installment = require('../installment/installment_model');
-    return await Installment.findOverdue(this.id);
-};
-
-Account.prototype.isInstallmentAccount = function () {
-    return this.installments && this.installments > 0;
-};
-
-// Static methods
-Account.findByUser = async function (userId) {
-    return await this.findAll({
-        where: { userId },
-        order: [['created_at', 'DESC']]
-    });
-};
-
-Account.findInstallmentAccounts = async function (userId = null) {
-    const where = {
-        installments: {
-            [sequelize.Sequelize.Op.gt]: 0
-        }
-    };
-
-    if (userId) {
-        where.userId = userId;
-    }
-
-    return await this.findAll({
-        where,
-        order: [['created_at', 'DESC']]
-    });
-};
-
-Account.findFixedAccounts = async function (userId = null) {
-    const where = {
-        type: 'FIXED'
-    };
-
-    if (userId) {
-        where.userId = userId;
-    }
-
-    return await this.findAll({
-        where,
-        order: [['created_at', 'DESC']]
-    });
-};
+// Model contains only schema definition and simple getters/setters
+// All business logic has been moved to AccountService
 
 module.exports = Account;

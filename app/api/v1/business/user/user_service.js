@@ -1,8 +1,6 @@
-const UserModel = require('./user_model');
 const BaseService = require('../../base/base_service');
-const { validatePasswordStrength, checkPersonalInfo } = require('../../../../utils/password-validator');
-const { cleanUserData } = require('../../../../utils/data-cleaner');
-const { Op } = require('sequelize');
+const UserModel = require('./user_model');
+const bcrypt = require('bcrypt');
 const { generateTokenUser } = require('../../../../utils/jwt');
 
 class UserService extends BaseService {
@@ -11,400 +9,273 @@ class UserService extends BaseService {
         this._userModel = UserModel;
     }
 
-    async register(userData) {
-        const requiredFields = ['name', 'email', 'cpf', 'password'];
-        for (const field of requiredFields) {
-            if (!userData[field]) {
-                throw new Error(`${field.toUpperCase()}_REQUIRED`);
-            }
-        }
-
-        const passwordValidation = validatePasswordStrength({ password: userData.password });
-        if (!passwordValidation.isValid) {
-            throw new Error(`PASSWORD_STRENGTH_ERROR: ${passwordValidation.errors.join(', ')}`);
-        }
-
-        const personalInfoCheck = checkPersonalInfo({
-            password: userData.password,
-            userInfo: { name: userData.name, email: userData.email }
-        });
-        if (personalInfoCheck.hasPersonalInfo) {
-            throw new Error(`PASSWORD_PERSONAL_INFO: ${personalInfoCheck.warnings.join(', ')}`);
-        }
-
-        const existingUser = await this._userModel.findOne({
-            where: {
-                [Op.or]: [{ email: userData.email.toLowerCase() }, { cpf: userData.cpf }]
-            }
-        });
-
-        if (existingUser) {
-            if (existingUser.email === userData.email.toLowerCase()) {
-                throw new Error('EMAIL_ALREADY_EXISTS');
-            }
-            if (existingUser.cpf === userData.cpf) {
-                throw new Error('CPF_ALREADY_EXISTS');
-            }
-        }
-
-        const allowedRoles = ['BUYER', 'SELLER'];
-        if (userData.role && !allowedRoles.includes(userData.role)) {
-            throw new Error('INVALID_ROLE');
-        }
-
-        const cleanedUserData = cleanUserData(userData);
-
-        const user = await this._userModel.createWithHash({
-            ...cleanedUserData,
-            email: cleanedUserData.email.toLowerCase(),
-            role: cleanedUserData.role || 'BUYER'
-        });
-
-        const tokenUser = await this.creteGenerateTokenUser({ userId: user.id });
-
-        return tokenUser;
-    }
-
-    async login(credentials) {
-        const user = await this._userModel.findOne({ where: { cpf: credentials.cpf } });
-        if (!user) {
-            throw new Error('INVALID_CREDENTIALS');
-        }
-
-        const isValidPassword = await user.validatePassword(credentials.password);
-        if (!isValidPassword) {
-            throw new Error('INVALID_CREDENTIALS');
-        }
-
-        user.last_login = new Date();
-        await user.save();
-
-        const tokenUser = await this.creteGenerateTokenUser({ userId: user.id });
-
-        return tokenUser;
-    }
-
-    async creteGenerateTokenUser(payload) {
-        const token = generateTokenUser(payload);
-        return token;
-    }
-
-    async logout(token = null) {
+    async getById(id) {
         try {
-            if (!token) {
-                throw new Error('TOKEN_REQUIRED');
-            }
-
-            const logoutResult = await this._authProvider.logout(token);
-
-            const userQuery = await this._userModel.findByPk(logoutResult.userId);
-            if (userQuery) {
-                userQuery.last_logout = new Date();
-                await userQuery.save();
-            }
-
-            console.log(`User logged out at ${new Date().toISOString()}`);
-
-            return {
-                success: true,
-                message: 'LOGOUT_SUCCESSFUL',
-                logoutTime: userQuery?.last_logout,
-                tokenBlacklisted: true
-            };
+            return await this._userModel.findByPk(id);
         } catch (error) {
-            console.error('Logout error:', error);
-            throw error;
+            throw new Error('USER_FETCH_ERROR');
         }
     }
 
-    async forgotPassword(cpf) {
-        const user = await this._userModel.findByCPF(cpf);
-
-        if (!user) {
-            return { message: 'RECOVERY_EMAIL_SENT' };
-        }
-
-        await this._authProvider.forgotPassword(user);
-
-        console.log('Reset token generated via ms_auth');
-
-        return { message: 'RECOVERY_EMAIL_SENT' };
-    }
-
-    async resetPassword(token, newPassword) {
+    async delete(id) {
         try {
-            const tokenData = await this._authProvider.verifyResetToken(token);
-            const userId = tokenData.userId;
-
-            const user = await this._userModel.findByPk(userId);
-            if (!user) {
-                throw new Error('USER_NOT_FOUND');
-            }
-
-            const passwordValidation = validatePasswordStrength({ password: newPassword });
-            if (!passwordValidation.isValid) {
-                throw new Error(`PASSWORD_STRENGTH_ERROR: ${passwordValidation.errors.join(', ')}`);
-            }
-
-            const personalInfoCheck = checkPersonalInfo({
-                password: newPassword,
-                userInfo: { name: user.name, email: user.email }
-            });
-            if (personalInfoCheck.hasPersonalInfo) {
-                throw new Error(`PASSWORD_PERSONAL_INFO: ${personalInfoCheck.warnings.join(', ')}`);
-            }
-
-            await this._userModel.updatePassword(user.id, newPassword);
-
-            await this._authProvider.confirmPasswordReset(token, userId);
-
-            return true;
+            return await this._userModel.destroy({ where: { id } });
         } catch (error) {
-            if (error.response?.status === 401) {
-                throw new Error('TOKEN_EXPIRED');
-            }
-            throw new Error('INVALID_TOKEN');
+            throw new Error('USER_DELETION_ERROR');
         }
     }
 
-    async verifyEmail(token) {
+    async hashPassword(password) {
         try {
-            const tokenData = await this._authProvider.verifyEmailToken(token);
-            const userId = tokenData.userId;
-
-            const user = await this._userModel.findByPk(userId);
-            if (!user) {
-                throw new Error('USER_NOT_FOUND');
-            }
-
-            user.email_verified = true;
-            user.email_verified_at = new Date();
-            await user.save();
-
-            return true;
+            const saltRounds = 10;
+            const hashedPassword = await bcrypt.hash(password, saltRounds);
+            return hashedPassword;
         } catch (error) {
-            if (error.response?.status === 401) {
-                throw new Error('TOKEN_EXPIRED');
-            }
-            throw new Error('INVALID_TOKEN');
+            throw new Error('PASSWORD_HASH_ERROR');
         }
     }
 
-    async resendVerification(cpf) {
-        const user = await this._userModel.findByCPF(cpf);
-
-        if (!user) {
-            return { message: 'VERIFICATION_EMAIL_SENT' };
+    async validatePassword(password, hashedPassword) {
+        try {
+            const isValid = await bcrypt.compare(password, hashedPassword);
+            return isValid;
+        } catch (error) {
+            throw new Error('PASSWORD_VALIDATION_ERROR');
         }
-
-        if (user.email_verified) {
-            return { message: 'EMAIL_ALREADY_VERIFIED' };
-        }
-
-        await this._authProvider.resendVerification(user);
-
-        console.log('Verification token generated via ms_auth');
-
-        return { message: 'VERIFICATION_EMAIL_SENT' };
     }
 
-    async getProfile(user) {
-        const userId = user.id || user.dataValues?.id;
+    validatePasswordStrength(password) {
+        const minLength = 6;
+        const hasNumbers = /\d/.test(password);
 
-        if (!userId) {
-            throw new Error('USER_ID_REQUIRED');
+        const errors = [];
+
+        if (password.length < minLength) {
+            errors.push(`Password must have at least ${minLength} characters`);
         }
-
-        return this._userModel.findByPk(userId, {
-            attributes: { exclude: ['hash_password', 'two_factor_secret'] }
-        });
-    }
-
-    async updateProfile(userId, data) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
+        if (!hasNumbers) {
+            errors.push('Password must contain at least one number');
         }
-
-        const allowedFields = ['name', 'phone', 'birth_date', 'gender', 'address', 'preferences'];
-        const updateData = {};
-
-        for (const field of allowedFields) {
-            if (data[field] !== undefined) {
-                updateData[field] = data[field];
-            }
-        }
-
-        const cleanedUpdateData = cleanUserData(updateData);
-
-        await user.update(cleanedUpdateData);
-
-        const { hash_password, two_factor_secret, ...userWithoutSensitive } = user.toJSON();
-        return userWithoutSensitive;
-    }
-
-    async changePassword(userId, { currentPassword, newPassword }) {
-        const user = await this._userModel.findByPk(userId);
-
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        const isValidPassword = await user.validatePassword(currentPassword);
-        if (!isValidPassword) {
-            throw new Error('INVALID_CURRENT_PASSWORD');
-        }
-
-        const passwordValidation = validatePasswordStrength({ password: newPassword });
-        if (!passwordValidation.isValid) {
-            throw new Error(`PASSWORD_STRENGTH_ERROR: ${passwordValidation.errors.join(', ')}`);
-        }
-
-        const personalInfoCheck = checkPersonalInfo({
-            password: newPassword,
-            userInfo: { name: user.name, email: user.email }
-        });
-        if (personalInfoCheck.hasPersonalInfo) {
-            throw new Error(`PASSWORD_PERSONAL_INFO: ${personalInfoCheck.warnings.join(', ')}`);
-        }
-
-        const isInHistory = await user.isPasswordInHistory(newPassword);
-        if (isInHistory) {
-            throw new Error('PASSWORD_IN_HISTORY');
-        }
-
-        await this._userModel.updatePassword(user.id, newPassword);
-
-        return true;
-    }
-
-    async deactivateAccount(userId) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        await user.update({ is_active: false });
-        return true;
-    }
-
-    async reactivateAccount(userId) {
-        const user = await this._userModel.findByPk(userId);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        await user.update({ is_active: true });
-        return user;
-    }
-
-    async list({ page = 1, limit = 20, is_active, role, search }) {
-        const where = {};
-
-        if (typeof is_active !== 'undefined') where.is_active = is_active;
-        if (role) where.role = role;
-        if (search) {
-            where[Op.or] = [{ name: { [Op.iLike]: `%${search}%` } }, { email: { [Op.iLike]: `%${search}%` } }];
-        }
-
-        const offset = (page - 1) * limit;
-        const { rows, count } = await this._userModel.findAndCountAll({
-            where,
-            offset,
-            limit: parseInt(limit, 10),
-            order: [['created_at', 'DESC']],
-            attributes: { exclude: ['hash_password', 'two_factor_secret'] }
-        });
 
         return {
-            docs: rows,
-            meta: {
-                total: count,
-                page: parseInt(page, 10),
-                limit: parseInt(limit, 10)
-            }
+            isValid: errors.length === 0,
+            errors,
+            score: [password.length >= minLength, hasNumbers].filter(Boolean).length
         };
     }
 
-    async getById(id) {
-        const user = await this._userModel.findByPk(id, {
-            attributes: { exclude: ['hash_password', 'two_factor_secret'] }
-        });
-
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        return user;
-    }
-
-    async update(id, data) {
-        const user = await this._userModel.findByPk(id);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
-        }
-
-        const allowedFields = [
-            'name',
-            'email',
-            'phone',
-            'birth_date',
-            'gender',
-            'role',
-            'is_active',
-            'email_verified',
-            'phone_verified',
-            'address',
-            'preferences',
-            'marketing_consent',
-            'newsletter_subscription'
-        ];
-
-        const updateData = {};
-        for (const field of allowedFields) {
-            if (data[field] !== undefined) {
-                updateData[field] = data[field];
+    async createWithHash(userData) {
+        try {
+            if (!userData.password) {
+                throw new Error('Password is required for user creation');
             }
+
+            // Validate password strength
+            const strengthCheck = this.validatePasswordStrength(userData.password);
+            if (!strengthCheck.isValid) {
+                throw new Error(`Password does not meet security requirements: ${strengthCheck.errors.join(', ')}`);
+            }
+
+            // Hash the password before creating
+            const hashedPassword = await this.hashPassword(userData.password);
+
+            // Remove plain text password from userData
+            const { password, ...userDataWithoutPassword } = userData;
+
+            // Create user with hashed password
+            const user = await this._userModel.create({
+                ...userDataWithoutPassword,
+                hash_password: hashedPassword
+            });
+
+            return user;
+        } catch (error) {
+            // Re-throw erros específicos
+            if (error.message === 'PASSWORD_HASH_ERROR') {
+                throw error;
+            }
+            throw new Error('USER_CREATION_ERROR');
         }
-
-        const cleanedUpdateData = cleanUserData(updateData);
-
-        await user.update(cleanedUpdateData);
-
-        const { hash_password, two_factor_secret, ...userWithoutSensitive } = user.toJSON();
-        return userWithoutSensitive;
     }
 
-    async softDelete(id) {
-        const user = await this._userModel.findByPk(id);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
+    async updatePassword(userId, newPassword) {
+        try {
+            const user = await this._userModel.findByPk(userId);
+            if (!user) {
+                throw new Error('User not found');
+            }
+
+            // Validate password strength
+            const strengthCheck = this.validatePasswordStrength(newPassword);
+            if (!strengthCheck.isValid) {
+                throw new Error(`Password does not meet security requirements: ${strengthCheck.errors.join(', ')}`);
+            }
+
+            // Hash the new password
+            const hashedPassword = await this.hashPassword(newPassword);
+            user.hash_password = hashedPassword;
+            await user.save();
+
+            return user;
+        } catch (error) {
+            // Re-throw erros específicos
+            if (error.message === 'PASSWORD_HASH_ERROR') {
+                throw error;
+            }
+            throw new Error('PASSWORD_UPDATE_ERROR');
         }
-
-        await user.destroy();
-
-        const { hash_password, two_factor_secret, ...userWithoutSensitive } = user.toJSON();
-        return userWithoutSensitive;
     }
 
-    async activateUser(id) {
-        const user = await this._userModel.findByPk(id);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
+    async findByEmail(email) {
+        try {
+            return await this._userModel.findOne({
+                where: { email }
+            });
+        } catch (error) {
+            throw new Error('USER_FETCH_ERROR');
         }
-
-        await user.update({ is_active: true });
-        return user;
     }
 
-    async deactivateUser(id) {
-        const user = await this._userModel.findByPk(id);
-        if (!user) {
-            throw new Error('USER_NOT_FOUND');
+    async findByCpf(cpf) {
+        try {
+            return await this._userModel.findOne({
+                where: { cpf }
+            });
+        } catch (error) {
+            throw new Error('USER_FETCH_ERROR');
         }
+    }
 
-        await user.update({ is_active: false });
-        return user;
+    async list(options = {}) {
+        try {
+            const { limit = 50, offset = 0, is_active } = options;
+
+            const where = {};
+            if (is_active !== undefined) {
+                where.is_active = is_active;
+            }
+
+            const { rows, count } = await this._userModel.findAndCountAll({
+                where,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                order: [['created_at', 'DESC']]
+            });
+
+            return {
+                docs: rows,
+                total: count,
+                limit: parseInt(limit),
+                offset: parseInt(offset),
+                hasNextPage: parseInt(offset) + parseInt(limit) < count,
+                hasPrevPage: parseInt(offset) > 0
+            };
+        } catch (error) {
+            throw new Error('USER_LIST_ERROR');
+        }
+    }
+
+    async register(userData) {
+        try {
+            // Verificar se CPF já existe (principal)
+            const existingUserByCpf = await this.findByCpf(userData.cpf);
+            if (existingUserByCpf) {
+                throw new Error('CPF_ALREADY_EXISTS');
+            }
+
+            // Verificar se email já existe
+            const existingUserByEmail = await this.findByEmail(userData.email);
+            if (existingUserByEmail) {
+                throw new Error('EMAIL_ALREADY_EXISTS');
+            }
+
+            // Criar usuário
+            const user = await this.createWithHash(userData);
+
+            // Gerar tokens
+            const tokenData = generateTokenUser({
+                id: user.id
+            });
+
+            return tokenData;
+        } catch (error) {
+            // Re-throw erros específicos
+            if (
+                error.message === 'CPF_ALREADY_EXISTS' ||
+                error.message === 'EMAIL_ALREADY_EXISTS' ||
+                error.message === 'USER_CREATION_ERROR' ||
+                error.message === 'PASSWORD_HASH_ERROR'
+            ) {
+                throw error;
+            }
+            throw new Error('USER_REGISTRATION_ERROR');
+        }
+    }
+
+    async login(loginData) {
+        try {
+            const { cpf, password } = loginData;
+
+            // Buscar usuário por CPF (principal)
+            const user = await this.findByCpf(cpf);
+            if (!user) {
+                throw new Error('INVALID_CREDENTIALS');
+            }
+
+            // Verificar se usuário está ativo
+            if (!user.is_active) {
+                throw new Error('USER_INACTIVE');
+            }
+
+            // Validar senha
+            const isValidPassword = await this.validatePassword(password, user.hash_password);
+            if (!isValidPassword) {
+                throw new Error('INVALID_CREDENTIALS');
+            }
+
+            // Atualizar último login
+            await user.update({ last_login: new Date() });
+
+            const accessToken = generateTokenUser({ userId: user.id });
+
+            return accessToken;
+        } catch (error) {
+            // Re-throw erros específicos
+            if (
+                error.message === 'INVALID_CREDENTIALS' ||
+                error.message === 'USER_INACTIVE' ||
+                error.message === 'PASSWORD_VALIDATION_ERROR' ||
+                error.message === 'USER_FETCH_ERROR'
+            ) {
+                throw error;
+            }
+            throw new Error('USER_LOGIN_ERROR');
+        }
+    }
+
+    async getProfile(user) {
+        try {
+            const userData = await this.getById(user.id);
+            if (!userData) {
+                throw new Error('USER_NOT_FOUND');
+            }
+
+            return {
+                id: userData.id,
+                name: userData.name,
+                email: userData.email,
+                cpf: userData.cpf,
+                is_active: userData.is_active,
+                email_verified: userData.email_verified,
+                last_login: userData.last_login
+            };
+        } catch (error) {
+            // Re-throw erros específicos
+            if (error.message === 'USER_NOT_FOUND' || error.message === 'USER_FETCH_ERROR') {
+                throw error;
+            }
+            throw new Error('USER_PROFILE_ERROR');
+        }
     }
 }
 

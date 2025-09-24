@@ -67,6 +67,10 @@ const Transaction = sequelize.define(
             get() {
                 const rawValue = this.getDataValue('value');
                 return rawValue !== null ? Number(rawValue) : null;
+            },
+            set(value) {
+                // Garantir que o valor seja sempre um inteiro (centavos)
+                this.setDataValue('value', Math.round(Number(value)));
             }
         },
         date: {
@@ -107,77 +111,7 @@ const Transaction = sequelize.define(
     }
 );
 
-// Static methods
-Transaction.findByUser = async function (userId, options = {}) {
-    const { limit, offset, startDate, endDate, type, category } = options;
-
-    const where = { userId };
-
-    if (startDate && endDate) {
-        where.date = {
-            [sequelize.Sequelize.Op.between]: [startDate, endDate]
-        };
-    }
-
-    if (type) {
-        where.type = type;
-    }
-
-    if (category) {
-        where.category = category;
-    }
-
-    return await this.findAndCountAll({
-        where,
-        limit,
-        offset,
-        order: [
-            ['date', 'DESC'],
-            ['created_at', 'DESC']
-        ]
-    });
-};
-
-Transaction.findByAccount = async function (accountId, options = {}) {
-    const { limit, offset, startDate, endDate } = options;
-
-    const where = { accountId };
-
-    if (startDate && endDate) {
-        where.date = {
-            [sequelize.Sequelize.Op.between]: [startDate, endDate]
-        };
-    }
-
-    return await this.findAndCountAll({
-        where,
-        limit,
-        offset,
-        order: [
-            ['date', 'DESC'],
-            ['created_at', 'DESC']
-        ]
-    });
-};
-
-Transaction.findByInstallment = async function (installmentId) {
-    return await this.findAll({
-        where: { installmentId },
-        order: [['created_at', 'DESC']]
-    });
-};
-
-Transaction.createFromInstallment = async function (installment, userId) {
-    return await this.create({
-        userId,
-        accountId: installment.accountId,
-        installmentId: installment.id,
-        type: 'EXPENSE',
-        category: 'Installment Payment',
-        description: `Parcela ${installment.number} - ${installment.amount}`,
-        value: installment.amount,
-        date: new Date()
-    });
-};
+// Model contains only schema definition and simple getters/setters
+// All business logic has been moved to TransactionService
 
 module.exports = Transaction;

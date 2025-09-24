@@ -31,14 +31,18 @@ const Installment = sequelize.define(
             field: 'due_date'
         },
         amount: {
-            type: DataTypes.DECIMAL(10, 2),
+            type: DataTypes.BIGINT,
             allowNull: false,
             validate: {
-                min: 0.01
+                min: 1 // Mínimo de 1 centavo
             },
             get() {
                 const rawValue = this.getDataValue('amount');
                 return rawValue !== null ? Number(rawValue) : null;
+            },
+            set(value) {
+                // Garantir que o valor seja sempre um inteiro (centavos)
+                this.setDataValue('amount', Math.round(Number(value)));
             }
         },
         isPaid: {
@@ -92,74 +96,7 @@ const Installment = sequelize.define(
     }
 );
 
-// Instance methods
-Installment.prototype.markAsPaid = async function () {
-    this.isPaid = true;
-    this.paidAt = new Date();
-    return await this.save();
-};
-
-Installment.prototype.markAsUnpaid = async function () {
-    this.isPaid = false;
-    this.paidAt = null;
-    return await this.save();
-};
-
-// Static methods
-Installment.findByAccount = async function (accountId) {
-    return await this.findAll({
-        where: { accountId },
-        order: [['number', 'ASC']]
-    });
-};
-
-Installment.findUnpaidByAccount = async function (accountId) {
-    return await this.findAll({
-        where: {
-            accountId,
-            isPaid: false
-        },
-        order: [['dueDate', 'ASC']]
-    });
-};
-
-Installment.findOverdue = async function (accountId = null) {
-    const where = {
-        isPaid: false,
-        dueDate: {
-            [sequelize.Sequelize.Op.lt]: new Date()
-        }
-    };
-
-    if (accountId) {
-        where.accountId = accountId;
-    }
-
-    return await this.findAll({
-        where,
-        order: [['dueDate', 'ASC']]
-    });
-};
-
-Installment.createInstallments = async function (accountId, totalAmount, installments, startDate, dueDay) {
-    const installmentAmount = totalAmount / installments;
-    const installmentsToCreate = [];
-
-    for (let i = 1; i <= installments; i++) {
-        const dueDate = new Date(startDate);
-        dueDate.setMonth(dueDate.getMonth() + (i - 1));
-        dueDate.setDate(dueDay);
-
-        installmentsToCreate.push({
-            accountId,
-            number: i,
-            dueDate,
-            amount: installmentAmount,
-            isPaid: false
-        });
-    }
-
-    return await this.bulkCreate(installmentsToCreate);
-};
+// Model contains only schema definition and simple getters/setters
+// All business logic has been moved to InstallmentService
 
 module.exports = Installment;

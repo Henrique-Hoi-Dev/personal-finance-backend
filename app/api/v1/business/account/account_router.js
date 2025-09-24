@@ -16,7 +16,13 @@ router.post(
     validator(validation.create),
     accountController.create.bind(accountController)
 );
-router.get('/', ensureAuthorization, verifyToken, accountController.getAll.bind(accountController));
+router.get(
+    '/',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.getAll),
+    accountController.getAll.bind(accountController)
+);
 router.get('/:id', ensureAuthorization, verifyToken, accountController.getById.bind(accountController));
 router.delete('/:id', ensureAuthorization, verifyToken, accountController.delete.bind(accountController));
 
