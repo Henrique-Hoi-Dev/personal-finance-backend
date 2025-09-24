@@ -12,9 +12,9 @@ const addRouters = (router) => {
         });
     });
 
-    router.use('/user', userRouter);
-    router.use('/account', accountRoutes);
-    router.use('/transaction', transactionRoutes);
+    router.use('/users', userRouter);
+    router.use('/accounts', accountRoutes);
+    router.use('/transactions', transactionRoutes);
 
     return router;
 };

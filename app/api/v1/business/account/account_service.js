@@ -14,23 +14,46 @@ class AccountService extends BaseService {
 
     async create(data) {
         try {
-            return await this._accountModel.create(data);
+            const account = await this._accountModel.create(data);
+
+            // Se a conta tem parcelas, criar as parcelas automaticamente
+            if (data.installments && data.installments > 0) {
+                await this._createInstallments(account.id, data);
+            }
+
+            return account;
         } catch (error) {
             throw new Error(`Error creating account: ${error.message}`);
         }
     }
 
-    async update(id, data) {
-        return await this._accountModel.update(data, { where: { id } });
+    async _createInstallments(accountId, accountData) {
+        const { installments, totalAmount, startDate, dueDay } = accountData;
+        const installmentAmount = totalAmount / installments;
+
+        for (let i = 1; i <= installments; i++) {
+            const dueDate = new Date(startDate);
+            dueDate.setMonth(dueDate.getMonth() + (i - 1));
+            dueDate.setDate(dueDay);
+
+            await this._installmentModel.create({
+                accountId,
+                number: i,
+                amount: installmentAmount,
+                dueDate,
+                description: `Parcela ${i} de ${installments}`,
+                isPaid: false
+            });
+        }
     }
 
     async delete(id) {
         return await this._accountModel.destroy({ where: { id } });
     }
 
-    async getAll({ page = 1, limit = 20, type, search } = {}) {
+    async getAll(userId, { page = 1, limit = 20, type, search } = {}) {
         try {
-            const where = {};
+            const where = { userId };
 
             if (type) where.type = type;
             if (search) {
@@ -95,39 +118,26 @@ class AccountService extends BaseService {
         }
     }
 
-    async getAccountTransactions(accountId) {
+    async getInstallments(accountId, { limit = 20, offset = 0 } = {}) {
         try {
-            return await this._transactionModel.findAll({
+            const { rows, count } = await this._installmentModel.findAndCountAll({
                 where: { accountId },
-                order: [
-                    ['date', 'DESC'],
-                    ['created_at', 'DESC']
-                ]
+                limit: parseInt(limit, 10),
+                offset: parseInt(offset, 10),
+                order: [['number', 'ASC']],
+                attributes: ['id', 'number', 'dueDate', 'amount', 'isPaid', 'paidAt']
             });
-        } catch (error) {
-            throw new Error(`Error fetching account transactions: ${error.message}`);
-        }
-    }
 
-    async getByUser(userId) {
-        try {
-            return await this._accountModel.findAll({
-                where: { userId },
-                order: [['created_at', 'DESC']]
-            });
+            return {
+                docs: rows,
+                total: count,
+                limit: parseInt(limit, 10),
+                offset: parseInt(offset, 10),
+                hasNextPage: parseInt(offset, 10) + parseInt(limit, 10) < count,
+                hasPrevPage: parseInt(offset, 10) > 0
+            };
         } catch (error) {
-            throw new Error(`Error fetching user accounts: ${error.message}`);
-        }
-    }
-
-    async getByType(type) {
-        try {
-            return await this._accountModel.findAll({
-                where: { type },
-                order: [['created_at', 'DESC']]
-            });
-        } catch (error) {
-            throw new Error(`Error fetching accounts by type: ${error.message}`);
+            throw new Error(`Error fetching account installments: ${error.message}`);
         }
     }
 }

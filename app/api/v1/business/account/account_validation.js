@@ -1,4 +1,4 @@
-const Joi = require('joi');
+const { Joi } = require('express-validation');
 
 const createSchema = Joi.object({
     userId: Joi.string().uuid().required().messages({

@@ -35,6 +35,10 @@ const Installment = sequelize.define(
             allowNull: false,
             validate: {
                 min: 0.01
+            },
+            get() {
+                const rawValue = this.getDataValue('amount');
+                return rawValue !== null ? Number(rawValue) : null;
             }
         },
         isPaid: {

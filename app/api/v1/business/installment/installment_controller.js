@@ -1,42 +1,43 @@
 const BaseController = require('../../base/base_controller');
-const TransactionService = require('./transaction_service');
+const InstallmentService = require('./installment_service');
 const HttpStatus = require('http-status');
 
-class TransactionController extends BaseController {
+class InstallmentController extends BaseController {
     constructor() {
         super();
-        this._transactionService = new TransactionService();
+        this._installmentService = new InstallmentService();
     }
 
-    async delete(req, res) {
+    async getById(req, res) {
         try {
             const { id } = req.params;
-            await this._transactionService.delete(id);
-            res.status(HttpStatus.status.NO_CONTENT).json();
-        } catch (error) {
-            res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
-        }
-    }
-
-    async getAll(req, res) {
-        try {
-            const userId = req.locals.user.id;
-            const data = await this._transactionService.getAll(userId, req.query);
+            const data = await this._installmentService.getById(id);
             res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
         } catch (error) {
             res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
         }
     }
 
-    async getBalance(req, res) {
+    async markAsPaid(req, res) {
         try {
+            const { id } = req.params;
             const userId = req.locals.user.id;
-            const balance = await this._transactionService.getUserBalance(userId);
-            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data: balance }));
+            const data = await this._installmentService.markAsPaid(id, userId);
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
+        } catch (error) {
+            res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
+        }
+    }
+
+    async delete(req, res) {
+        try {
+            const { id } = req.params;
+            await this._installmentService.delete(id);
+            res.status(HttpStatus.status.NO_CONTENT).json();
         } catch (error) {
             res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
         }
     }
 }
 
-module.exports = TransactionController;
+module.exports = InstallmentController;

@@ -1,15 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const AccountController = require('./account_controller');
+const InstallmentController = require('../installment/installment_controller');
 const validation = require('./account_validation');
 const validator = require('../../../../utils/validator');
 const { ensureAuthorization, verifyToken } = require('../../../../main/middleware');
 
 const accountController = new AccountController();
+const installmentController = new InstallmentController();
 
-// Rotas básicas CRUD
-router.get('/', ensureAuthorization, verifyToken, accountController.getAll.bind(accountController));
-router.get('/:id', ensureAuthorization, verifyToken, accountController.getById.bind(accountController));
 router.post(
     '/',
     ensureAuthorization,
@@ -17,22 +16,34 @@ router.post(
     validator(validation.create),
     accountController.create.bind(accountController)
 );
-router.put(
-    '/:id',
-    ensureAuthorization,
-    verifyToken,
-    validator(validation.update),
-    accountController.update.bind(accountController)
-);
+router.get('/', ensureAuthorization, verifyToken, accountController.getAll.bind(accountController));
+router.get('/:id', ensureAuthorization, verifyToken, accountController.getById.bind(accountController));
 router.delete('/:id', ensureAuthorization, verifyToken, accountController.delete.bind(accountController));
 
-// Rotas específicas do Account
 router.get(
-    '/:id/transactions',
+    '/:id/installments',
     ensureAuthorization,
     verifyToken,
-    accountController.getTransactions.bind(accountController)
+    accountController.getInstallments.bind(accountController)
 );
-router.get('/user/:userId', ensureAuthorization, verifyToken, accountController.getByUser.bind(accountController));
+
+router.get(
+    '/installments/:id',
+    ensureAuthorization,
+    verifyToken,
+    installmentController.getById.bind(installmentController)
+);
+router.patch(
+    '/installments/:id/pay',
+    ensureAuthorization,
+    verifyToken,
+    installmentController.markAsPaid.bind(installmentController)
+);
+router.delete(
+    '/installments/:id',
+    ensureAuthorization,
+    verifyToken,
+    installmentController.delete.bind(installmentController)
+);
 
 module.exports = router;

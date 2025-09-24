@@ -39,6 +39,10 @@ const Account = sequelize.define(
             field: 'total_amount',
             validate: {
                 min: 0
+            },
+            get() {
+                const rawValue = this.getDataValue('totalAmount');
+                return rawValue !== null ? Number(rawValue) : null;
             }
         },
         installments: {

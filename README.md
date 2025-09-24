@@ -1,35 +1,44 @@
-# Henrique Store - Microserviço de Usuários
+# Personal Finance Backend
 
-Microserviço de usuários para o e-commerce Henrique Store, responsável por autenticação, gestão de perfis e administração de usuários.
+API REST para gerenciamento de finanças pessoais com contas, parcelas e transações.
 
 ## 🚀 Funcionalidades
 
-- ✅ Registro e login de usuários
-- ✅ Gestão de perfis e endereços
-- ✅ Recuperação de senha
-- ✅ Administração de usuários
-- ✅ Autenticação delegada ao ms_auth
-- ✅ Validação de dados
-- ✅ Testes unitários e de integração
+- ✅ **Usuários**: Registro, login e perfil
+- ✅ **Contas**: Criação com parcelas automáticas
+- ✅ **Parcelas**: Gerenciamento e pagamento
+- ✅ **Transações**: Controle de receitas e despesas
+- ✅ **Autenticação JWT**: Segurança em todos os endpoints
+- ✅ **Paginação**: Listagens otimizadas
+- ✅ **Saldo**: Cálculo automático de receitas - despesas
 
-## 📋 Endpoints
+## 📋 Endpoints Principais
 
-### Autenticação
-- `POST /v1/user/register` - Registro de usuário
-- `POST /v1/user/login` - Login
-- `POST /v1/user/forgot-password` - Esqueci minha senha
-- `POST /v1/user/reset-password` - Reset de senha
+### Usuários (`/users`)
 
-### Perfil
-- `GET /v1/user/profile` - Obter perfil
-- `PUT /v1/user/profile` - Atualizar perfil
-- `PUT /v1/user/change-password` - Alterar senha
+- `POST /users/register` - Criar usuário
+- `POST /users/login` - Login (retorna JWT)
+- `GET /users/profile` - Ver perfil logado
 
-### Administração
-- `GET /v1/user/` - Listar usuários
-- `GET /v1/user/:id` - Obter usuário por ID
-- `PUT /v1/user/:id` - Atualizar usuário
-- `DELETE /v1/user/:id` - Desativar usuário
+### Contas (`/accounts`)
+
+- `POST /accounts` - Criar conta (gera parcelas automaticamente)
+- `GET /accounts` - Listar contas paginadas
+- `GET /accounts/:id` - Detalhar conta + parcelas
+- `DELETE /accounts/:id` - Deletar conta e parcelas
+- `GET /accounts/:id/installments` - Listar parcelas da conta
+
+### Parcelas (`/accounts/installments`)
+
+- `GET /accounts/installments/:id` - Detalhar parcela
+- `PATCH /accounts/installments/:id/pay` - Marcar como paga (gera transação)
+- `DELETE /accounts/installments/:id` - Deletar parcela
+
+### Transações (`/transactions`)
+
+- `GET /transactions` - Listar transações paginadas
+- `DELETE /transactions/:id` - Deletar transação
+- `GET /transactions/balance` - Retornar saldo
 
 ## 🔧 Instalação
 
@@ -38,9 +47,51 @@ npm install
 cp env.sample .env
 npm run migrate
 npm run seed
-npm run dev
+npm start
 ```
+
+## 🧪 Testes com Postman
+
+### Arquivos Incluídos
+
+- `postman/Personal-Finance-API.postman_collection.json` - Coleção completa
+- `postman/Personal-Finance-Environment.postman_environment.json` - Ambiente
+- `postman/Personal-Finance-Tests.postman_collection.json` - Testes automatizados
+- `postman/test-data.json` - Dados de exemplo
+- `postman/README.md` - Instruções detalhadas
+
+### Como Usar
+
+1. Importe a coleção e ambiente no Postman
+2. Execute `POST /users/register` para criar usuário
+3. Execute `POST /users/login` e copie o token JWT
+4. Cole o token na variável `jwt_token` do ambiente
+5. Teste todos os endpoints!
 
 ## 📚 Documentação
 
-Veja a documentação completa em [README_USER_SERVICE.md](README_USER_SERVICE.md) e exemplos de uso em [API_EXAMPLES.md](API_EXAMPLES.md).
+- [API Endpoints](docs/API_ENDPOINTS.md) - Documentação completa da API
+- [Postman Collection](postman/README.md) - Guia de uso do Postman
+- [Finance Module](docs/FINANCE_MODULE.md) - Documentação do módulo financeiro
+- [Installment Usage](docs/INSTALLMENT_USAGE.md) - Guia de uso de parcelas
+
+## 🔐 Autenticação
+
+Todos os endpoints (exceto register/login) requerem JWT:
+
+```
+Authorization: Bearer <token>
+```
+
+## 🏃‍♂️ Execução
+
+```bash
+# Desenvolvimento
+npm run dev
+
+# Produção
+npm start
+
+# Testes
+npm test
+```

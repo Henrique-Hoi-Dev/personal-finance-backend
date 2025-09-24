@@ -10,17 +10,9 @@ class AccountController extends BaseController {
 
     async create(req, res) {
         try {
-            const data = await this._accountService.create(req.body);
+            const userId = req.locals.user.id;
+            const data = await this._accountService.create({ ...req.body, userId });
             res.status(HttpStatus.status.CREATED).json(this.parseKeysToCamelcase({ data }));
-        } catch (error) {
-            res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
-        }
-    }
-
-    async update(req, res) {
-        try {
-            const data = await this._accountService.update(req.params.id, req.body);
-            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
         } catch (error) {
             res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
         }
@@ -38,7 +30,8 @@ class AccountController extends BaseController {
 
     async getAll(req, res) {
         try {
-            const data = await this._accountService.getAll(req.query);
+            const userId = req.locals.user.id;
+            const data = await this._accountService.getAll(userId, req.query);
             res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
         } catch (error) {
             res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
@@ -54,23 +47,17 @@ class AccountController extends BaseController {
         }
     }
 
-    async getTransactions(req, res) {
+    async getInstallments(req, res) {
         try {
             const { id } = req.params;
-            const transactions = await this._accountService.getAccountTransactions(id);
-            res.json(transactions);
+            const { limit = 20, offset = 0 } = req.query;
+            const data = await this._accountService.getInstallments(id, {
+                limit: parseInt(limit),
+                offset: parseInt(offset)
+            });
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
         } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    }
-
-    async getByUser(req, res) {
-        try {
-            const { userId } = req.params;
-            const accounts = await this._accountService.getByUser(userId);
-            res.json(accounts);
-        } catch (error) {
-            res.status(500).json({ error: error.message });
+            res.status(HttpStatus.status.INTERNAL_SERVER_ERROR).json({ error: error.message });
         }
     }
 }

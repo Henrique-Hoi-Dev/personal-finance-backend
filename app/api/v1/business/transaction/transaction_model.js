@@ -63,6 +63,10 @@ const Transaction = sequelize.define(
             allowNull: false,
             validate: {
                 min: 1 // Mínimo de 1 centavo
+            },
+            get() {
+                const rawValue = this.getDataValue('value');
+                return rawValue !== null ? Number(rawValue) : null;
             }
         },
         date: {
