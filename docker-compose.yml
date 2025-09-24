@@ -1,0 +1,38 @@
+version: '3.8'
+services:
+    postgres:
+        image: postgres:15
+        container_name: henrique_store_db
+        environment:
+            POSTGRES_DB: henrique_store
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: postgres
+        ports:
+            - '5432:5432'
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        networks:
+            - henrique_store_network
+
+    api:
+        build: .
+        container_name: henrique_store_api
+        command: npm run dev
+        env_file: [.env]
+        volumes:
+            - .:/usr/app/current
+            - /usr/app/current/node_modules
+        ports:
+            - '3000:3000'
+            - '9229:9229'
+        depends_on:
+            - postgres
+        networks:
+            - henrique_store_network
+
+volumes:
+    postgres_data:
+
+networks:
+    henrique_store_network:
+        driver: bridge

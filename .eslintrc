@@ -1,0 +1,40 @@
+{
+    "env": {
+        "es6": true,
+        "node": true,
+        "browser": true,
+        "jest": true,
+        "mongo": true
+    },
+    "extends": "eslint:recommended",
+    "parserOptions": {
+        "ecmaVersion": 2021,
+        "sourceType": "module",
+        "allowImportExportEverywhere": false,
+        "ecmaFeatures": {
+            "spread": true
+        }
+    },
+    "rules": {
+        "indent": [
+            "warn",
+            4,
+            {
+                "SwitchCase": 1
+            }
+        ],
+        "semi": ["warn", "always"],
+        "no-console": "off",
+        "no-undef": "off",
+        "accessor-pairs": [
+            "error",
+            {
+                "getWithoutSet": true
+            }
+        ],
+        "array-callback-return": "error",
+        "consistent-return": "error",
+        "no-extra-boolean-cast": "off",
+        "no-mixed-spaces-and-tabs": "off"
+    }
+}

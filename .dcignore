@@ -1,0 +1,151 @@
+# Node.js specific
+node_modules/
+logs/
+pids/
+coverage/
+build/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.*.swp
+*.swo
+._*
+.Spotlight-V100
+.Trashes
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Lock files
+package-lock.json
+yarn.lock
+
+# Dependency directories
+jspm_packages/
+web_modules/
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# dotenv environment variables file
+.env
+.env.test
+
+# MacOS files
+.DS_Store
+
+# Logs
+logs
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Build artifacts
+build/
+dist/
+out/
+
+# Coverage
+coverage/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Dependency directories
+node_modules/
+jspm_packages/
+web_modules/
+
+# npm cache
+.npm
+
+# Grunt intermediate storage (https://gruntjs.com/creating-plugins#storing-task-files)
+.grunt
+
+# Bower dependency directory (https://bower.io/)
+bower_components/
+
+# Lock files
+package-lock.json
+yarn.lock
+.pnp.*
+.pnp/
+
+# Optional eslint cache
+.eslintcache
+
+# Parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# dotenv environment variables file
+.env
+.env.test
+
+# Project local environment settings
+.local.env
+.production.env
+.development.env
+.test.env
+.staging.env
+
+# Python virtual environment
+.venv
+__pycache__/
+pyvenv.cfg
+
+# IDEs and editors
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# macOS
+.DS_Store
+
+# WebStorm
+.idea/
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Others
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# System Files
+Thumbs.db
+ehthumbs.db
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# Typescript
+*.tsbuildinfo
