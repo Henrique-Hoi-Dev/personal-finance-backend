@@ -3,15 +3,12 @@ FROM node:18-alpine
 # Criar usuário não-root para segurança
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
-# Instalar dependências do sistema
 RUN apk add --no-cache dumb-init
 
 WORKDIR /app
 
-# Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar dependências somente de produção
 RUN npm ci --only=production && npm cache clean --force
 
 # Copiar código fonte
@@ -24,16 +21,15 @@ RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app
 USER nodejs
 
 # Expor porta
-EXPOSE 3001
+EXPOSE 8081
 
-# Definir variáveis de ambiente
 ENV NODE_ENV=production
 ENV TZ="America/Sao_Paulo"
-ENV PORT=3001
+ENV PORT=8081
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+  CMD node -e "require('http').get('http://localhost:8081/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
 # Iniciar aplicação com dumb-init
 ENTRYPOINT ["dumb-init", "--"]

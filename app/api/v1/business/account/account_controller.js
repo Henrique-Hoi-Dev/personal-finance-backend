@@ -56,6 +56,26 @@ class AccountController extends BaseController {
             next(this.handleError(error));
         }
     }
+
+    async markAsPaid(req, res, next) {
+        try {
+            const userId = req.locals.user.id;
+            const data = await this._accountService.markAsPaid(req.params.id, userId, req.body);
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
+        } catch (error) {
+            next(this.handleError(error));
+        }
+    }
+
+    async checkFixedAccounts(req, res, next) {
+        try {
+            const userId = req.locals.user.id;
+            const data = await this._accountService.checkAndUpdateFixedAccounts(userId);
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
+        } catch (error) {
+            next(this.handleError(error));
+        }
+    }
 }
 
 module.exports = AccountController;

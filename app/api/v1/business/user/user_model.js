@@ -1,6 +1,5 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('../../../../../config/database');
-const bcrypt = require('bcrypt');
 
 const User = sequelize.define(
     'User',
@@ -48,6 +47,24 @@ const User = sequelize.define(
         last_login: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        default_currency: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            defaultValue: 'BRL',
+            validate: {
+                isIn: [
+                    ['BRL', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'ARS', 'CLP', 'COP', 'MXN', 'PEN']
+                ]
+            }
+        },
+        preferred_language: {
+            type: DataTypes.STRING,
+            allowNull: false,
+            defaultValue: 'pt-BR',
+            validate: {
+                isIn: [['pt-BR', 'en-US', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'zh-CN', 'ru-RU']]
+            }
         }
     },
     {

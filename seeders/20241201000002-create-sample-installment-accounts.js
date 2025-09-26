@@ -24,7 +24,7 @@ module.exports = {
                 name: 'Financiamento Casa',
                 type: 'LOAN',
                 total_amount: 36000000, // R$ 360.000,00 em centavos
-                installments: 240,
+                installments: 10,
                 start_date: '2024-01-15',
                 due_day: 15,
                 created_at: new Date(),

@@ -23,8 +23,34 @@ router.get(
     validator(validation.getAll),
     accountController.getAll.bind(accountController)
 );
-router.get('/:id', ensureAuthorization, verifyToken, accountController.getById.bind(accountController));
-router.delete('/:id', ensureAuthorization, verifyToken, accountController.delete.bind(accountController));
+router.get(
+    '/:id',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.getById),
+    accountController.getById.bind(accountController)
+);
+router.delete(
+    '/:id',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.delete),
+    accountController.delete.bind(accountController)
+);
+router.patch(
+    '/:id/pay',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.markAsPaid),
+    accountController.markAsPaid.bind(accountController)
+);
+
+router.post(
+    '/check-fixed-accounts',
+    ensureAuthorization,
+    verifyToken,
+    accountController.checkFixedAccounts.bind(accountController)
+);
 
 router.get(
     '/:id/installments',
@@ -49,6 +75,7 @@ router.delete(
     '/installments/:id',
     ensureAuthorization,
     verifyToken,
+    validator(validation.deleteInstallment),
     installmentController.delete.bind(installmentController)
 );
 

@@ -1,4 +1,4 @@
-version: '3.9'
+version: "3.9"
 
 services:
     db:
@@ -10,7 +10,7 @@ services:
             POSTGRES_PASSWORD: postgres
             POSTGRES_DB: finance
         ports:
-            - '5433:5432'
+            - "5433:5432"
         volumes:
             - postgres_data:/var/lib/postgresql/data
 
@@ -27,11 +27,16 @@ services:
             DB_PASSWORD: postgres
             DB_NAME: finance
             DB_PORT: 5432
-            PORT: 3001
-            TZ: 'America/Sao_Paulo'
+            DB_PASS: postgres
+            DB_DIALECT: postgres
+            PORT: 8081
+            TZ: "America/Sao_Paulo"
+            JWT_SECRET: "b1e4ef6b1f799606b5bcfe1dee11ef4471a8e62cf5699a50e6737a15d2a6ebb44dafdc1f44b5f38ad1a9621eea444d86f24497d63f438d705267c0c8b150d06f"
+            JWT_EXPIRES_IN: "1h"
+            ALLOWED_ORIGINS: "http://localhost:3005,http://localhost:8081,https://yourdomain.com"
         ports:
-            - '3001:3001'
-        command: ['node', 'server.js']
+            - "8081:8081"
+        command: ["node", "server.js"]
 
 volumes:
     postgres_data:

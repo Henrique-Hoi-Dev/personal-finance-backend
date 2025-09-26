@@ -25,6 +25,7 @@ API REST para gerenciamento de finanças pessoais com contas, parcelas e transa�
 - `POST /accounts` - Criar conta (gera parcelas automaticamente)
 - `GET /accounts` - Listar contas paginadas
 - `GET /accounts/:id` - Detalhar conta + parcelas
+- `PATCH /accounts/:id/pay` - Pagar conta inteira (marca como paga + cria transação)
 - `DELETE /accounts/:id` - Deletar conta e parcelas
 - `GET /accounts/:id/installments` - Listar parcelas da conta
 

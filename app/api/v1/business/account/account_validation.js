@@ -68,6 +68,40 @@ const getAllValidation = Joi.object({
     })
 });
 
+const getByIdValidation = Joi.object({
+    id: Joi.string().uuid().required().messages({
+        'string.guid': 'ID da conta deve ser um UUID válido',
+        'any.required': 'ID da conta é obrigatório'
+    })
+});
+
+const deleteValidation = Joi.object({
+    id: Joi.string().uuid().required().messages({
+        'string.guid': 'ID da conta deve ser um UUID válido',
+        'any.required': 'ID da conta é obrigatório'
+    })
+});
+
+const deleteInstallmentValidation = Joi.object({
+    id: Joi.string().uuid().required().messages({
+        'string.guid': 'ID da parcela deve ser um UUID válido',
+        'any.required': 'ID da parcela é obrigatório'
+    })
+});
+
+const markAsPaidValidation = Joi.object({
+    id: Joi.string().uuid().required().messages({
+        'string.guid': 'ID da conta deve ser um UUID válido',
+        'any.required': 'ID da conta é obrigatório'
+    }),
+    paymentAmount: Joi.number().integer().min(1).required().messages({
+        'number.base': 'Valor do pagamento deve ser um número',
+        'number.integer': 'Valor do pagamento deve ser um número inteiro (centavos)',
+        'number.min': 'Valor do pagamento deve ser maior que 0 centavos',
+        'any.required': 'Valor do pagamento é obrigatório'
+    })
+});
+
 module.exports = {
     create: {
         body: createSchema
@@ -77,5 +111,30 @@ module.exports = {
     },
     getAll: {
         query: getAllValidation
+    },
+    getById: {
+        params: getByIdValidation
+    },
+    delete: {
+        params: deleteValidation
+    },
+    deleteInstallment: {
+        params: deleteInstallmentValidation
+    },
+    markAsPaid: {
+        params: Joi.object({
+            id: Joi.string().uuid().required().messages({
+                'string.guid': 'ID da conta deve ser um UUID válido',
+                'any.required': 'ID da conta é obrigatório'
+            })
+        }),
+        body: Joi.object({
+            paymentAmount: Joi.number().integer().min(1).required().messages({
+                'number.base': 'Valor do pagamento deve ser um número',
+                'number.integer': 'Valor do pagamento deve ser um número inteiro (centavos)',
+                'number.min': 'Valor do pagamento deve ser maior que 0 centavos',
+                'any.required': 'Valor do pagamento é obrigatório'
+            })
+        })
     }
 };

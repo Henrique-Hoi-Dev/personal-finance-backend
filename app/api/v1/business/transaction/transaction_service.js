@@ -5,6 +5,7 @@ const AccountModel = require('../account/account_model');
 const UserModel = require('../user/user_model');
 const InstallmentModel = require('../installment/installment_model');
 const { Op } = require('sequelize');
+const { getCategoryColor } = require('../../../../utils/enums');
 
 class TransactionService extends BaseService {
     constructor() {
@@ -34,7 +35,6 @@ class TransactionService extends BaseService {
             if (category) where.category = category;
             if (accountId) where.accountId = accountId;
 
-            // Filtro por período
             if (startDate && endDate) {
                 where.date = {
                     [this._transactionModel.sequelize.Sequelize.Op.between]: [startDate, endDate]
@@ -69,7 +69,12 @@ class TransactionService extends BaseService {
                                 model: this._installmentModel,
                                 as: 'installmentList',
                                 attributes: ['id', 'number', 'amount', 'dueDate', 'isPaid', 'paidAt'],
-                                required: false
+                                required: false,
+                                separate: true,
+                                order: [
+                                    ['number', 'ASC'],
+                                    ['created_at', 'ASC']
+                                ]
                             }
                         ]
                     }
@@ -248,7 +253,7 @@ class TransactionService extends BaseService {
                 where.category = category;
             }
 
-            return await this._transactionModel.findAndCountAll({
+            const result = await this._transactionModel.findAndCountAll({
                 where,
                 limit,
                 offset,
@@ -257,6 +262,8 @@ class TransactionService extends BaseService {
                     ['created_at', 'DESC']
                 ]
             });
+
+            return result;
         } catch (error) {
             throw new Error('TRANSACTION_FETCH_ERROR');
         }
@@ -274,7 +281,7 @@ class TransactionService extends BaseService {
                 };
             }
 
-            return await this._transactionModel.findAndCountAll({
+            const result = await this._transactionModel.findAndCountAll({
                 where,
                 limit,
                 offset,
@@ -283,6 +290,8 @@ class TransactionService extends BaseService {
                     ['created_at', 'DESC']
                 ]
             });
+
+            return result;
         } catch (error) {
             throw new Error('TRANSACTION_FETCH_ERROR');
         }
@@ -290,10 +299,12 @@ class TransactionService extends BaseService {
 
     async findByInstallment(installmentId) {
         try {
-            return await this._transactionModel.findAll({
+            const result = await this._transactionModel.findAll({
                 where: { installmentId },
                 order: [['created_at', 'DESC']]
             });
+
+            return result;
         } catch (error) {
             throw new Error('TRANSACTION_FETCH_ERROR');
         }
@@ -368,6 +379,119 @@ class TransactionService extends BaseService {
                 throw error;
             }
             throw new Error('TRANSACTION_CREATION_ERROR');
+        }
+    }
+
+    /**
+     * Cria uma transação de pagamento de conta
+     * @param {Object} account - Objeto da conta
+     * @param {string} userId - ID do usuário
+     * @param {number} paymentAmount - Valor do pagamento em centavos
+     * @returns {Promise<Object>} - Transação criada
+     */
+    async createAccountPayment(account, userId, paymentAmount) {
+        try {
+            const transactionData = {
+                userId,
+                accountId: account.id,
+                type: 'EXPENSE',
+                category: 'ACCOUNT_PAYMENT',
+                description: `Pagamento da conta: ${account.name}`,
+                value: paymentAmount,
+                date: new Date()
+            };
+
+            const transaction = await this._transactionModel.create(transactionData);
+            return transaction;
+        } catch (error) {
+            throw new Error('TRANSACTION_CREATION_ERROR');
+        }
+    }
+
+    /**
+     * Retorna gastos por categoria com valor e porcentagem
+     * @param {string} userId - ID do usuário
+     * @param {Object} options - Opções de filtro (startDate, endDate)
+     * @returns {Promise<Array>} - Array com gastos por categoria
+     */
+    async getExpensesByCategory(userId, options = {}) {
+        try {
+            const { startDate, endDate } = options;
+
+            const where = {
+                userId,
+                type: 'EXPENSE'
+            };
+
+            if (startDate && endDate) {
+                where.date = {
+                    [Op.between]: [startDate, endDate]
+                };
+            } else if (startDate) {
+                where.date = {
+                    [Op.gte]: startDate
+                };
+            } else if (endDate) {
+                where.date = {
+                    [Op.lte]: endDate
+                };
+            }
+
+            // Buscar gastos agrupados por categoria
+            const expensesByCategory = await this._transactionModel.findAll({
+                where,
+                attributes: [
+                    'category',
+                    [
+                        this._transactionModel.sequelize.fn('SUM', this._transactionModel.sequelize.col('value')),
+                        'totalValue'
+                    ]
+                ],
+                group: ['category'],
+                order: [
+                    [this._transactionModel.sequelize.fn('SUM', this._transactionModel.sequelize.col('value')), 'DESC']
+                ],
+                raw: true
+            });
+
+            const totalExpenses = expensesByCategory.reduce((sum, item) => sum + Number(item.totalValue), 0);
+
+            const categoryNames = expensesByCategory.map((item) => item.category).filter(Boolean);
+            let categoryInfo = {};
+
+            if (categoryNames.length > 0) {
+                const categories = await this._categoryValidator.getAllCategories();
+                categoryInfo = categories.reduce((acc, cat) => {
+                    acc[cat.name] = cat;
+                    return acc;
+                }, {});
+            }
+
+            // Formatar resultado com porcentagem e informações da categoria
+            const result = expensesByCategory.map((item) => {
+                const value = Number(item.totalValue);
+                const percentage = totalExpenses > 0 ? (value / totalExpenses) * 100 : 0;
+                const category = categoryInfo[item.category] || {
+                    name: item.category,
+                    pt_br: item.category,
+                    en: item.category
+                };
+
+                return {
+                    category: item.category,
+                    name: category.pt_br || category.name,
+                    nameEn: category.en || category.name,
+                    value: value,
+                    percentage: Math.round(percentage * 100) / 100, // Arredondar para 2 casas decimais
+                    color: getCategoryColor(item.category) // Função para definir cor da categoria
+                };
+            });
+
+            return {
+                categories: result
+            };
+        } catch (error) {
+            throw new Error('EXPENSES_BY_CATEGORY_ERROR');
         }
     }
 }

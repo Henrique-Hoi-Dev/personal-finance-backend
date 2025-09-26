@@ -28,22 +28,12 @@ module.exports = {
                     }
                     return value;
                 }, 'phone-validation'),
-            birth_date: Joi.date().max('now').optional(),
-            gender: Joi.string().valid('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY').optional(),
-            role: Joi.string().valid('BUYER', 'SELLER').optional(),
-            address: Joi.object({
-                street: Joi.string().required(),
-                number: Joi.string().optional(),
-                complement: Joi.string().optional(),
-                neighborhood: Joi.string().optional(),
-                city: Joi.string().required(),
-                state: Joi.string().required(),
-                zip_code: Joi.string().required(),
-                country: Joi.string().default('Brasil')
-            }).optional(),
-            marketing_consent: Joi.boolean().optional(),
-            newsletter_subscription: Joi.boolean().optional(),
-            data_processing_consent: Joi.boolean().optional()
+            default_currency: Joi.string()
+                .valid('BRL', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'ARS', 'CLP', 'COP', 'MXN', 'PEN')
+                .optional(),
+            preferred_language: Joi.string()
+                .valid('pt-BR', 'en-US', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'zh-CN', 'ru-RU')
+                .optional()
         })
     },
 
@@ -111,18 +101,6 @@ module.exports = {
                     }
                     return value;
                 }, 'phone-validation'),
-            birth_date: Joi.date().max('now').optional(),
-            gender: Joi.string().valid('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY').optional(),
-            address: Joi.object({
-                street: Joi.string().required(),
-                number: Joi.string().optional(),
-                complement: Joi.string().optional(),
-                neighborhood: Joi.string().optional(),
-                city: Joi.string().required(),
-                state: Joi.string().required(),
-                zip_code: Joi.string().required(),
-                country: Joi.string().default('Brasil')
-            }).optional(),
             preferences: Joi.object({
                 language: Joi.string().valid('pt-BR', 'en-US', 'es-ES').optional(),
                 notifications: Joi.object({
@@ -131,7 +109,13 @@ module.exports = {
                     push: Joi.boolean().optional()
                 }).optional(),
                 theme: Joi.string().valid('light', 'dark').optional()
-            }).optional()
+            }).optional(),
+            default_currency: Joi.string()
+                .valid('BRL', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'ARS', 'CLP', 'COP', 'MXN', 'PEN')
+                .optional(),
+            preferred_language: Joi.string()
+                .valid('pt-BR', 'en-US', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'zh-CN', 'ru-RU')
+                .optional()
         })
     },
 
@@ -187,22 +171,8 @@ module.exports = {
                     }
                     return value;
                 }, 'phone-validation'),
-            birth_date: Joi.date().max('now').optional(),
-            gender: Joi.string().valid('MALE', 'FEMALE', 'OTHER', 'PREFER_NOT_TO_SAY').optional(),
-            role: Joi.string().valid('ADMIN', 'BUYER', 'SELLER').optional(),
             is_active: Joi.boolean().optional(),
-            email_verified: Joi.boolean().optional(),
-            phone_verified: Joi.boolean().optional(),
-            address: Joi.object({
-                street: Joi.string().required(),
-                number: Joi.string().optional(),
-                complement: Joi.string().optional(),
-                neighborhood: Joi.string().optional(),
-                city: Joi.string().required(),
-                state: Joi.string().required(),
-                zip_code: Joi.string().required(),
-                country: Joi.string().default('Brasil')
-            }).optional(),
+            last_login: Joi.date().optional(),
             preferences: Joi.object({
                 language: Joi.string().valid('pt-BR', 'en-US', 'es-ES').optional(),
                 notifications: Joi.object({
@@ -212,6 +182,12 @@ module.exports = {
                 }).optional(),
                 theme: Joi.string().valid('light', 'dark').optional()
             }).optional(),
+            default_currency: Joi.string()
+                .valid('BRL', 'USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'CNY', 'ARS', 'CLP', 'COP', 'MXN', 'PEN')
+                .optional(),
+            preferred_language: Joi.string()
+                .valid('pt-BR', 'en-US', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'zh-CN', 'ru-RU')
+                .optional(),
             marketing_consent: Joi.boolean().optional(),
             newsletter_subscription: Joi.boolean().optional(),
             external_id: Joi.string().optional(),

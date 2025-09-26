@@ -86,6 +86,16 @@ class TransactionController extends BaseController {
             next(this.handleError(error));
         }
     }
+
+    async getExpensesByCategory(req, res, next) {
+        try {
+            const userId = req.locals.user.id;
+            const data = await this._transactionService.getExpensesByCategory(userId, req.query);
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
+        } catch (error) {
+            next(this.handleError(error));
+        }
+    }
 }
 
 module.exports = TransactionController;

@@ -8,46 +8,78 @@ module.exports = {
         const expenseCategories = [
             {
                 id: crypto.randomUUID(),
-                name: 'ALIMENTACAO',
+                name: 'FOOD',
                 description: 'Gastos com comida, restaurantes e supermercado',
                 type: 'EXPENSE',
                 is_default: true,
+                pt_br: 'Alimentação',
+                en: 'Food',
                 created_at: new Date(),
                 updated_at: new Date()
             },
             {
                 id: crypto.randomUUID(),
-                name: 'TRANSPORTE',
+                name: 'TRANSPORT',
                 description: 'Gastos com transporte público, combustível, uber, etc.',
                 type: 'EXPENSE',
                 is_default: true,
+                pt_br: 'Transporte',
+                en: 'Transport',
                 created_at: new Date(),
                 updated_at: new Date()
             },
             {
                 id: crypto.randomUUID(),
-                name: 'LAZER',
+                name: 'ENTERTAINMENT',
                 description: 'Entretenimento, cinema, jogos, viagens',
                 type: 'EXPENSE',
                 is_default: true,
+                pt_br: 'Entretenimento',
+                en: 'Entertainment',
                 created_at: new Date(),
                 updated_at: new Date()
             },
             {
                 id: crypto.randomUUID(),
-                name: 'MORADIA',
+                name: 'RENT',
                 description: 'Aluguel, financiamento, condomínio, IPTU',
                 type: 'EXPENSE',
                 is_default: true,
+                pt_br: 'Moradia',
+                en: 'Housing',
                 created_at: new Date(),
                 updated_at: new Date()
             },
             {
                 id: crypto.randomUUID(),
-                name: 'SAUDE',
+                name: 'HEALTH',
                 description: 'Plano de saúde, medicamentos, consultas médicas',
                 type: 'EXPENSE',
                 is_default: true,
+                pt_br: 'Saúde',
+                en: 'Health',
+                created_at: new Date(),
+                updated_at: new Date()
+            },
+            {
+                id: crypto.randomUUID(),
+                name: 'ACCOUNT_PAYMENT',
+                description: 'Pagamento direto de contas',
+                type: 'EXPENSE',
+                is_default: true,
+                pt_br: 'Pagamento de Conta',
+                en: 'Account Payment',
+                created_at: new Date(),
+                updated_at: new Date()
+            },
+            {
+                id: crypto.randomUUID(),
+                name: 'INSTALLMENT_PAYMENT',
+                description: 'Pagamento de parcelas de contas',
+                type: 'EXPENSE',
+                is_default: true,
+                pt_br: 'Pagamento de Parcela',
+                en: 'Installment Payment',
                 created_at: new Date(),
                 updated_at: new Date()
             }
@@ -57,10 +89,12 @@ module.exports = {
         const incomeCategories = [
             {
                 id: crypto.randomUUID(),
-                name: 'SALARIO',
+                name: 'SALARY',
                 description: 'Salário mensal, 13º salário, férias',
                 type: 'INCOME',
                 is_default: true,
+                pt_br: 'Salário',
+                en: 'Salary',
                 created_at: new Date(),
                 updated_at: new Date()
             },
@@ -70,33 +104,41 @@ module.exports = {
                 description: 'Trabalhos freelancer, projetos extras',
                 type: 'INCOME',
                 is_default: true,
+                pt_br: 'Freelance',
+                en: 'Freelance',
                 created_at: new Date(),
                 updated_at: new Date()
             },
             {
                 id: crypto.randomUUID(),
-                name: 'INVESTIMENTOS',
+                name: 'INVESTMENT',
                 description: 'Rendimentos de investimentos, dividendos, juros',
                 type: 'INCOME',
                 is_default: true,
+                pt_br: 'Investimentos',
+                en: 'Investment',
                 created_at: new Date(),
                 updated_at: new Date()
             },
             {
                 id: crypto.randomUUID(),
-                name: 'REEMBOLSO',
+                name: 'REFUND',
                 description: 'Reembolsos de despesas, restituições',
                 type: 'INCOME',
                 is_default: true,
+                pt_br: 'Reembolso',
+                en: 'Refund',
                 created_at: new Date(),
                 updated_at: new Date()
             },
             {
                 id: crypto.randomUUID(),
-                name: 'OUTROS',
+                name: 'OTHER',
                 description: 'Outras receitas não categorizadas',
                 type: 'INCOME',
                 is_default: true,
+                pt_br: 'Outros',
+                en: 'Other',
                 created_at: new Date(),
                 updated_at: new Date()
             }

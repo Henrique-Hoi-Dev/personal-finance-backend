@@ -43,23 +43,31 @@ class InstallmentService extends BaseService {
                     accountId,
                     id: { [this._installmentModel.sequelize.Sequelize.Op.ne]: id }
                 },
-                order: [['number', 'ASC']]
+                order: [
+                    ['number', 'ASC'],
+                    ['created_at', 'ASC']
+                ]
             });
 
+            // PRIMEIRO: Excluir a parcela original
+            await this._installmentModel.destroy({ where: { id } });
+
             if (remainingInstallments.length === 0) {
-                return await this._installmentModel.destroy({ where: { id } });
+                return true;
             }
 
             const totalAccountAmount = account.totalAmount;
             const newAmountPerInstallment = Math.round(totalAccountAmount / remainingInstallments.length);
 
+            // SEGUNDO: Renumerar as parcelas restantes
             for (let i = 0; i < remainingInstallments.length; i++) {
                 const installment = remainingInstallments[i];
+                installment.number = i + 1;
                 installment.amount = newAmountPerInstallment;
                 await installment.save();
             }
 
-            return await this._installmentModel.destroy({ where: { id } });
+            return true;
         } catch (error) {
             if (
                 error.message === 'INSTALLMENT_NOT_FOUND' ||
@@ -101,7 +109,10 @@ class InstallmentService extends BaseService {
                 where: { accountId },
                 limit: parseInt(limit),
                 offset: offset,
-                order: [['number', 'ASC']]
+                order: [
+                    ['number', 'ASC'],
+                    ['created_at', 'ASC']
+                ]
             });
 
             return {
@@ -203,7 +214,13 @@ class InstallmentService extends BaseService {
                 });
             }
 
-            return await this._installmentModel.bulkCreate(installmentsToCreate);
+            const createdInstallments = [];
+            for (const installmentData of installmentsToCreate) {
+                const installment = await this._installmentModel.create(installmentData);
+                createdInstallments.push(installment);
+            }
+
+            return createdInstallments;
         } catch (error) {
             throw new Error('INSTALLMENT_PAYMENT_ERROR');
         }

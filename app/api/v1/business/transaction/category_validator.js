@@ -36,7 +36,7 @@ class CategoryValidator {
         try {
             const results = await sequelize.query(
                 `
-                SELECT id, name, description, type, is_default
+                SELECT id, name, description, type, is_default, pt_br, en
                 FROM transaction_categories 
                 WHERE type = :type
                 ORDER BY name
@@ -57,7 +57,7 @@ class CategoryValidator {
         try {
             const results = await sequelize.query(
                 `
-                SELECT id, name, description, type, is_default
+                SELECT id, name, description, type, is_default, pt_br, en
                 FROM transaction_categories 
                 ORDER BY type, name
             `,

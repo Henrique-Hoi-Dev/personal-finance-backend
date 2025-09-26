@@ -106,6 +106,25 @@ const getAllValidation = Joi.object({
     page: Joi.number().integer().min(0).optional()
 });
 
+const getExpensesByCategoryValidation = Joi.object({
+    startDate: Joi.date().iso().optional().messages({
+        'date.format': 'Data de início deve estar no formato ISO (YYYY-MM-DD)'
+    }),
+    endDate: Joi.date().iso().optional().messages({
+        'date.format': 'Data de fim deve estar no formato ISO (YYYY-MM-DD)'
+    })
+})
+    .custom((value, helpers) => {
+        // Validar se startDate não é posterior a endDate
+        if (value.startDate && value.endDate && new Date(value.startDate) > new Date(value.endDate)) {
+            return helpers.error('date.range', { startDate: value.startDate, endDate: value.endDate });
+        }
+        return value;
+    })
+    .messages({
+        'date.range': 'Data de início não pode ser posterior à data de fim'
+    });
+
 module.exports = {
     create: {
         body: createSchema
@@ -124,5 +143,8 @@ module.exports = {
     },
     getAllValidation: {
         query: getAllValidation
+    },
+    getExpensesByCategoryValidation: {
+        query: getExpensesByCategoryValidation
     }
 };

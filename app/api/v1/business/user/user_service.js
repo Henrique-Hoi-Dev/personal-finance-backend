@@ -267,7 +267,9 @@ class UserService extends BaseService {
                 cpf: userData.cpf,
                 is_active: userData.is_active,
                 email_verified: userData.email_verified,
-                last_login: userData.last_login
+                last_login: userData.last_login,
+                default_currency: userData.default_currency,
+                preferred_language: userData.preferred_language
             };
         } catch (error) {
             // Re-throw erros específicos
@@ -275,6 +277,30 @@ class UserService extends BaseService {
                 throw error;
             }
             throw new Error('USER_PROFILE_ERROR');
+        }
+    }
+
+    async logout(userId) {
+        try {
+            // Para um sistema JWT stateless, o logout é principalmente do lado do cliente
+            // Aqui podemos registrar o logout para auditoria ou implementar blacklist futuramente
+
+            // Atualizar último logout (opcional - para auditoria)
+            const user = await this.getById(userId);
+            if (user) {
+                await user.update({ last_logout: new Date() });
+            }
+
+            return {
+                message: 'Logout realizado com sucesso',
+                timestamp: new Date().toISOString()
+            };
+        } catch (error) {
+            // Re-throw erros específicos
+            if (error.message === 'USER_NOT_FOUND' || error.message === 'USER_FETCH_ERROR') {
+                throw error;
+            }
+            throw new Error('USER_LOGOUT_ERROR');
         }
     }
 }
