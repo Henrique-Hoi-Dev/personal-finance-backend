@@ -45,13 +45,6 @@ router.patch(
     accountController.markAsPaid.bind(accountController)
 );
 
-router.post(
-    '/check-fixed-accounts',
-    ensureAuthorization,
-    verifyToken,
-    accountController.checkFixedAccounts.bind(accountController)
-);
-
 router.get(
     '/:id/installments',
     ensureAuthorization,

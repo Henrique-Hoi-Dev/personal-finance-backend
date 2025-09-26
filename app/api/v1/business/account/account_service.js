@@ -178,6 +178,11 @@ class AccountService extends BaseService {
         try {
             const { limit = 10, page = 0, userId, type } = options;
 
+            // Verificar e atualizar contas fixas antes de buscar contas
+            if (userId) {
+                await this.checkAndUpdateFixedAccounts(userId);
+            }
+
             const where = {};
             if (userId) {
                 where.userId = userId;
@@ -244,14 +249,13 @@ class AccountService extends BaseService {
         try {
             const where = {
                 type: 'FIXED',
-                isPaid: true // Só verifica contas que estão marcadas como pagas
+                isPaid: true
             };
 
             if (userId) {
                 where.userId = userId;
             }
 
-            // Buscar todas as contas fixas pagas
             const fixedAccounts = await this._accountModel.findAll({
                 where,
                 attributes: ['id', 'name', 'startDate', 'dueDay', 'isPaid', 'userId']
@@ -270,12 +274,9 @@ class AccountService extends BaseService {
                 const startMonth = startDate.getMonth();
                 const startYear = startDate.getFullYear();
 
-                // Calcular quantos meses se passaram desde o início
                 const monthsPassed = (currentYear - startYear) * 12 + (currentMonth - startMonth);
 
-                // Se passou mais de um mês, verificar se precisa voltar para não pago
                 if (monthsPassed >= 1) {
-                    // Verificar se já passou o dia de vencimento do mês atual
                     const dueDay = account.dueDay;
                     const shouldBeUnpaid = currentDay > dueDay;
 
@@ -294,7 +295,6 @@ class AccountService extends BaseService {
                 }
             }
 
-            // Atualizar contas que precisam voltar para não pagas
             if (accountsToUpdate.length > 0) {
                 await this._accountModel.update({ isPaid: false }, { where: { id: { [Op.in]: accountsToUpdate } } });
             }
