@@ -101,7 +101,7 @@ class TransactionService extends BaseService {
 
             if (year && month) {
                 options.year = parseInt(year);
-                options.month = parseInt(month);
+                options.month = parseInt(month) - 1;
             }
 
             const currentDate = new Date();
