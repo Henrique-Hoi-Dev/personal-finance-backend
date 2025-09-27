@@ -53,6 +53,15 @@ class AccountService extends BaseService {
                     }
                     return new Date(a.created_at) - new Date(b.created_at);
                 });
+
+                if (account.type === 'LOAN') {
+                    const paidInstallments = account.installmentList.filter((installment) => installment.isPaid);
+                    const amountPaid = paidInstallments.reduce((total, installment) => {
+                        return total + (installment.amount || 0);
+                    }, 0);
+
+                    account.dataValues.amountPaid = amountPaid;
+                }
             }
             if (!account) {
                 throw new Error('ACCOUNT_NOT_FOUND');
@@ -180,23 +189,24 @@ class AccountService extends BaseService {
     _calculateMonthlyInterestRate(pmt, principal, periods) {
         if (principal <= 0 || periods <= 0) return 0;
 
-        // 🔹 Normaliza: converte de centavos para reais
+        // Normaliza: converte de centavos para reais
         const pmtReal = pmt / 100;
         const principalReal = principal / 100;
-        console.log('pmtReal', pmtReal);
-        console.log('principalReal', principalReal);
+
         let rate = 0.01; // chute inicial 1%
-        const tolerance = 1e-7;
+        const tolerance = 1e-10;
         const maxIterations = 100;
 
         for (let i = 0; i < maxIterations; i++) {
             const pow = Math.pow(1 + rate, -periods);
+
+            // f(i) = (P * i) / (1 - (1+i)^-n) - PMT
             const f = (principalReal * rate) / (1 - pow) - pmtReal;
 
             if (Math.abs(f) < tolerance) break;
 
-            const fPrime =
-                (principalReal * (Math.pow(1 + rate, -periods) * (periods * rate + 1) - 1)) / Math.pow(1 - pow, 2);
+            // f'(i) = derivada correta
+            const fPrime = (principalReal * (1 - pow - periods * rate * pow)) / Math.pow(1 - pow, 2);
 
             rate -= f / fPrime;
 
@@ -204,8 +214,7 @@ class AccountService extends BaseService {
             if (rate > 1) rate = 0.5; // evita explosão
         }
 
-        console.log('rate', rate);
-        // 🔹 Retorna em porcentagem (%) com 2 casas decimais
+        // Retorna em porcentagem (%) com duas casas decimais
         return Math.round(rate * 10000) / 100;
     }
 
@@ -309,6 +318,16 @@ class AccountService extends BaseService {
                         }
                         return new Date(a.created_at) - new Date(b.created_at);
                     });
+                }
+
+                // Para contas do tipo LOAN, calcular o valor já pago
+                if (account.type === 'LOAN' && account.installmentList) {
+                    const paidInstallments = account.installmentList.filter((installment) => installment.isPaid);
+                    const amountPaid = paidInstallments.reduce((total, installment) => {
+                        return total + (installment.amount || 0);
+                    }, 0);
+
+                    account.dataValues.amountPaid = amountPaid;
                 }
             });
 
