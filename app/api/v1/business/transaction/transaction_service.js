@@ -97,27 +97,32 @@ class TransactionService extends BaseService {
 
     async getUserBalance(userId) {
         try {
-            const [income, totalExpenses, linkedExpenses, fixedAccountsTotal, loanAccountsTotal] = await Promise.all([
-                this._transactionModel.sum('value', {
-                    where: { userId, type: 'INCOME' }
-                }),
-                this._transactionModel.sum('value', {
-                    where: { userId, type: 'EXPENSE' }
-                }),
-                this._transactionModel.sum('value', {
-                    where: {
-                        userId,
-                        type: 'EXPENSE',
-                        [Op.or]: [{ accountId: { [Op.ne]: null } }, { installmentId: { [Op.ne]: null } }]
-                    }
-                }),
-                this._accountModel.sum('totalAmount', {
-                    where: { userId, type: 'FIXED' }
-                }),
-                this._accountModel.sum('totalAmount', {
-                    where: { userId, type: 'LOAN' }
-                })
-            ]);
+            const [income, totalExpenses, linkedExpenses, fixedAccountsTotal, loanAccountsTotal, totalAccounts] =
+                await Promise.all([
+                    this._transactionModel.sum('value', {
+                        where: { userId, type: 'INCOME' }
+                    }),
+                    this._transactionModel.sum('value', {
+                        where: { userId, type: 'EXPENSE' }
+                    }),
+                    this._transactionModel.sum('value', {
+                        where: {
+                            userId,
+                            type: 'EXPENSE',
+                            [Op.or]: [{ accountId: { [Op.ne]: null } }, { installmentId: { [Op.ne]: null } }]
+                        }
+                    }),
+                    this._accountModel.sum('totalAmount', {
+                        where: { userId, type: 'FIXED' }
+                    }),
+                    this._accountModel.sum('totalAmount', {
+                        where: { userId, type: 'LOAN' }
+                    }),
+
+                    this._accountModel.sum('totalAmount', {
+                        where: { userId }
+                    })
+                ]);
 
             const totalExpensesValue = Number(totalExpenses || 0);
             const linkedExpensesValue = Number(linkedExpenses || 0);
@@ -130,7 +135,8 @@ class TransactionService extends BaseService {
                 standaloneExpenses: standaloneExpenses,
                 balance: Number((income || 0) - totalExpensesValue),
                 fixedAccountsTotal: Number(fixedAccountsTotal || 0),
-                loanAccountsTotal: Number(loanAccountsTotal || 0)
+                loanAccountsTotal: Number(loanAccountsTotal || 0),
+                totalAccounts: Number(totalAccounts || 0)
             };
         } catch (error) {
             throw new Error('BALANCE_CALCULATION_ERROR');
