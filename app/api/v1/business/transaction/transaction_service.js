@@ -95,20 +95,54 @@ class TransactionService extends BaseService {
         }
     }
 
-    async getUserBalance(userId) {
+    async getUserBalance(userId, options = {}) {
         try {
+            const { year, month } = options;
+
+            if (year && month) {
+                options.year = parseInt(year);
+                options.month = parseInt(month);
+            }
+
+            const currentDate = new Date();
+            let targetYear = currentDate.getFullYear();
+            let targetMonth = currentDate.getMonth();
+
+            if (options.year && options.month !== undefined) {
+                targetYear = options.year;
+                targetMonth = options.month;
+            }
+
+            const startOfMonth = new Date(targetYear, targetMonth, 1);
+            const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+
             const [income, totalExpenses, linkedExpenses, fixedAccountsTotal, loanAccountsTotal, totalAccounts] =
                 await Promise.all([
                     this._transactionModel.sum('value', {
-                        where: { userId, type: 'INCOME' }
-                    }),
-                    this._transactionModel.sum('value', {
-                        where: { userId, type: 'EXPENSE' }
+                        where: {
+                            userId,
+                            type: 'INCOME',
+                            date: {
+                                [Op.between]: [startOfMonth, endOfMonth]
+                            }
+                        }
                     }),
                     this._transactionModel.sum('value', {
                         where: {
                             userId,
                             type: 'EXPENSE',
+                            date: {
+                                [Op.between]: [startOfMonth, endOfMonth]
+                            }
+                        }
+                    }),
+                    this._transactionModel.sum('value', {
+                        where: {
+                            userId,
+                            type: 'EXPENSE',
+                            date: {
+                                [Op.between]: [startOfMonth, endOfMonth]
+                            },
                             [Op.or]: [{ accountId: { [Op.ne]: null } }, { installmentId: { [Op.ne]: null } }]
                         }
                     }),
@@ -136,7 +170,14 @@ class TransactionService extends BaseService {
                 balance: Number((income || 0) - totalExpensesValue),
                 fixedAccountsTotal: Number(fixedAccountsTotal || 0),
                 loanAccountsTotal: Number(loanAccountsTotal || 0),
-                totalAccounts: Number(totalAccounts || 0)
+                totalAccounts: Number(totalAccounts || 0),
+                period: {
+                    year: targetYear,
+                    month: targetMonth + 1,
+                    startDate: startOfMonth.toISOString().split('T')[0],
+                    endDate: endOfMonth.toISOString().split('T')[0],
+                    isCurrentMonth: targetYear === currentDate.getFullYear() && targetMonth === currentDate.getMonth()
+                }
             };
         } catch (error) {
             throw new Error('BALANCE_CALCULATION_ERROR');

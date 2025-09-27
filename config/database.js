@@ -6,6 +6,10 @@ const sequelize = new Sequelize(process.env.DB_NAME, process.env.DB_USER, proces
     port: process.env.DB_PORT,
     dialect: process.env.DB_DIALECT || 'postgres',
     logging: process.env.DB_LOGGING === 'true' ? console.log : false,
+    timezone: '-03:00', // Timezone do Brasil (GMT-3)
+    dialectOptions: {
+        timezone: 'America/Sao_Paulo'
+    },
     pool: {
         max: 5,
         min: 0,

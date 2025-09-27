@@ -36,7 +36,8 @@ class TransactionController extends BaseController {
     async getBalance(req, res, next) {
         try {
             const userId = req.locals.user.id;
-            const data = await this._transactionService.getUserBalance(userId);
+
+            const data = await this._transactionService.getUserBalance(userId, req.query);
             res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
         } catch (error) {
             next(this.handleError(error));

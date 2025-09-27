@@ -61,7 +61,34 @@ const Account = sequelize.define(
         startDate: {
             type: DataTypes.DATEONLY,
             allowNull: false,
-            field: 'start_date'
+            field: 'start_date',
+            get() {
+                const rawValue = this.getDataValue('startDate');
+                return rawValue;
+            },
+            set(value) {
+                if (value) {
+                    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                        this.setDataValue('startDate', value);
+                    } else {
+                        const date = new Date(value);
+
+                        if ((typeof value === 'string' && value.includes('Z')) || value instanceof Date) {
+                            const year = date.getUTCFullYear();
+                            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+                            const day = String(date.getUTCDate()).padStart(2, '0');
+                            this.setDataValue('startDate', `${year}-${month}-${day}`);
+                        } else {
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            this.setDataValue('startDate', `${year}-${month}-${day}`);
+                        }
+                    }
+                } else {
+                    this.setDataValue('startDate', value);
+                }
+            }
         },
         dueDay: {
             type: DataTypes.INTEGER,

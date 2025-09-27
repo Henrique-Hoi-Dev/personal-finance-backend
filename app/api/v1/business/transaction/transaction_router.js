@@ -7,7 +7,8 @@ const {
     createExpenseValidation,
     getCategoriesValidation,
     getAllValidation,
-    getExpensesByCategoryValidation
+    getExpensesByCategoryValidation,
+    getBalanceValidation
 } = require('./transaction_validation');
 const validator = require('../../../../utils/validator');
 const transactionController = new TransactionController();
@@ -19,7 +20,13 @@ router.get(
     validator(getAllValidation),
     transactionController.getAll.bind(transactionController)
 );
-router.get('/balance', ensureAuthorization, verifyToken, transactionController.getBalance.bind(transactionController));
+router.get(
+    '/balance',
+    ensureAuthorization,
+    verifyToken,
+    validator(getBalanceValidation),
+    transactionController.getBalance.bind(transactionController)
+);
 router.get(
     '/expenses-by-category',
     ensureAuthorization,
