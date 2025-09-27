@@ -18,6 +18,16 @@ class AccountController extends BaseController {
         }
     }
 
+    async update(req, res, next) {
+        try {
+            const { id } = req.params;
+            const data = await this._accountService.update(id, req.body);
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
+        } catch (error) {
+            next(this.handleError(error));
+        }
+    }
+
     async delete(req, res, next) {
         try {
             const { id } = req.params;

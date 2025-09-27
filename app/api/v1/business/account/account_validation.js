@@ -54,6 +54,9 @@ const createSchema = Joi.object({
         'number.base': 'Taxa de juros mensal deve ser um número',
         'number.min': 'Taxa de juros mensal deve ser maior ou igual a 0',
         'number.max': 'Taxa de juros mensal deve ser menor ou igual a 999.99'
+    }),
+    isPreview: Joi.boolean().optional().messages({
+        'boolean.base': 'Campo isPreview deve ser true ou false'
     })
 }).custom((value, helpers) => {
     // Validação customizada para empréstimos
@@ -83,7 +86,8 @@ const updateSchema = Joi.object({
     installmentAmount: Joi.number().integer().min(0).optional(),
     totalWithInterest: Joi.number().integer().min(0).optional(),
     interestRate: Joi.number().integer().min(0).optional(),
-    monthlyInterestRate: Joi.number().precision(2).min(0).max(999.99).optional()
+    monthlyInterestRate: Joi.number().precision(2).min(0).max(999.99).optional(),
+    isPreview: Joi.boolean().optional()
 })
     .min(1)
     .messages({

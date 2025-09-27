@@ -16,6 +16,13 @@ router.post(
     validator(validation.create),
     accountController.create.bind(accountController)
 );
+router.patch(
+    '/:id',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.update),
+    accountController.update.bind(accountController)
+);
 router.get(
     '/',
     ensureAuthorization,

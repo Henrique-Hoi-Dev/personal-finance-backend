@@ -120,6 +120,13 @@ const Account = sequelize.define(
                 const rawValue = this.getDataValue('monthlyInterestRate');
                 return rawValue !== null ? Number(rawValue) : null;
             }
+        },
+        isPreview: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+            field: 'is_preview',
+            comment: 'Indica se é uma prévia de gasto (ex: água, luz que variam)'
         }
     },
     {

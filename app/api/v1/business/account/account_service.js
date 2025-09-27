@@ -42,7 +42,8 @@ class AccountService extends BaseService {
                     'totalWithInterest',
                     'interestRate',
                     'monthlyInterestRate',
-                    'installmentAmount'
+                    'installmentAmount',
+                    'isPreview'
                 ]
             });
 
@@ -115,6 +116,61 @@ class AccountService extends BaseService {
                 throw error;
             }
             throw new Error('ACCOUNT_CREATION_ERROR');
+        }
+    }
+
+    async update(id, updateData) {
+        try {
+            // Verificar se a conta existe
+            const existingAccount = await this._accountModel.findByPk(id);
+            if (!existingAccount) {
+                throw new Error('ACCOUNT_NOT_FOUND');
+            }
+
+            // Se for empréstimo e tiver dados de cálculo, recalcular
+            if (updateData.type === 'LOAN' || existingAccount.type === 'LOAN') {
+                if (updateData.installmentAmount && updateData.installments && updateData.totalAmount) {
+                    const calculatedData = this._calculateLoanAmounts(updateData);
+                    updateData = { ...updateData, ...calculatedData };
+                }
+            }
+
+            // Atualizar a conta
+            await this._accountModel.update(updateData, {
+                where: { id }
+            });
+
+            // Se mudou o número de parcelas ou valores, recriar as parcelas
+            if (updateData.installments || updateData.totalAmount || updateData.totalWithInterest) {
+                // Deletar parcelas existentes
+                await this._installmentModel.destroy({
+                    where: { accountId: id }
+                });
+
+                // Recriar parcelas se houver installments
+                const updatedAccount = await this._accountModel.findByPk(id);
+                if (updatedAccount.installments && updatedAccount.installments > 0) {
+                    const amountToUse =
+                        updatedAccount.type === 'LOAN' ? updatedAccount.totalWithInterest : updatedAccount.totalAmount;
+
+                    if (amountToUse) {
+                        await this._installmentService.createInstallments(
+                            updatedAccount.id,
+                            amountToUse,
+                            updatedAccount.installments,
+                            updatedAccount.startDate,
+                            updatedAccount.dueDay
+                        );
+                    }
+                }
+            }
+
+            return await this.getById(id);
+        } catch (error) {
+            if (error.message === 'ACCOUNT_NOT_FOUND') {
+                throw error;
+            }
+            throw new Error('ACCOUNT_UPDATE_ERROR');
         }
     }
 
