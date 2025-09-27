@@ -7,7 +7,6 @@ const generateTokenUser = (payload = {}) => {
         algorithm: 'HS256'
     });
 
-    // Convert expiresIn to seconds
     let expiresInSeconds;
     if (expiresIn.endsWith('h')) {
         expiresInSeconds = parseInt(expiresIn) * 3600; // hours to seconds

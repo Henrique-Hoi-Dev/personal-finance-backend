@@ -14,7 +14,6 @@ class TransactionController extends BaseController {
         try {
             const { id } = req.params;
 
-            // Verificar se pode deletar (não pode ser transação de parcela)
             await this._transactionService.canDeleteTransaction(id);
 
             await this._transactionService.delete(id);

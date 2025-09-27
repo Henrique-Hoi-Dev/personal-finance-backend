@@ -44,7 +44,6 @@ const updateSchema = Joi.object({
         'object.min': 'Pelo menos um campo deve ser fornecido para atualização'
     });
 
-// Validação específica para entradas (INCOME)
 const createIncomeSchema = Joi.object({
     accountId: Joi.string().uuid().optional().messages({
         'string.guid': 'ID da conta deve ser um UUID válido'
@@ -68,7 +67,6 @@ const createIncomeSchema = Joi.object({
     })
 });
 
-// Validação específica para saídas (EXPENSE)
 const createExpenseSchema = Joi.object({
     accountId: Joi.string().uuid().optional().messages({
         'string.guid': 'ID da conta deve ser um UUID válido'
@@ -115,7 +113,6 @@ const getExpensesByCategoryValidation = Joi.object({
     })
 })
     .custom((value, helpers) => {
-        // Validar se startDate não é posterior a endDate
         if (value.startDate && value.endDate && new Date(value.startDate) > new Date(value.endDate)) {
             return helpers.error('date.range', { startDate: value.startDate, endDate: value.endDate });
         }

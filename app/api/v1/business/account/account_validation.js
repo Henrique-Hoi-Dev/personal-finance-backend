@@ -34,6 +34,21 @@ const createSchema = Joi.object({
         'number.base': 'Número de parcelas deve ser um número',
         'number.integer': 'Número de parcelas deve ser um número inteiro',
         'number.min': 'Número de parcelas deve ser maior que 0'
+    }),
+    installmentAmount: Joi.number().integer().min(0).optional().messages({
+        'number.base': 'Valor da parcela deve ser um número inteiro',
+        'number.integer': 'Valor da parcela deve ser um número inteiro (centavos)',
+        'number.min': 'Valor da parcela deve ser maior ou igual a 0 centavos'
+    }),
+    totalWithInterest: Joi.number().integer().min(0).optional().messages({
+        'number.base': 'Valor total com juros deve ser um número inteiro',
+        'number.integer': 'Valor total com juros deve ser um número inteiro (centavos)',
+        'number.min': 'Valor total com juros deve ser maior ou igual a 0 centavos'
+    }),
+    principalAmount: Joi.number().integer().min(0).optional().messages({
+        'number.base': 'Valor principal deve ser um número inteiro',
+        'number.integer': 'Valor principal deve ser um número inteiro (centavos)',
+        'number.min': 'Valor principal deve ser maior ou igual a 0 centavos'
     })
 });
 
@@ -43,7 +58,10 @@ const updateSchema = Joi.object({
     startDate: Joi.date().iso().optional(),
     dueDay: Joi.number().integer().min(1).max(31).optional(),
     totalAmount: Joi.number().integer().min(0).optional(),
-    installments: Joi.number().integer().min(1).optional()
+    installments: Joi.number().integer().min(1).optional(),
+    installmentAmount: Joi.number().integer().min(0).optional(),
+    totalWithInterest: Joi.number().integer().min(0).optional(),
+    principalAmount: Joi.number().integer().min(0).optional()
 })
     .min(1)
     .messages({
@@ -51,20 +69,13 @@ const updateSchema = Joi.object({
     });
 
 const getAllValidation = Joi.object({
-    userId: Joi.string().uuid().optional().messages({
-        'string.guid': 'ID do usuário deve ser um UUID válido'
-    }),
     type: Joi.string().valid('FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER').optional(),
-    limit: Joi.number().integer().min(1).max(100).optional().messages({
-        'number.base': 'Limite deve ser um número',
-        'number.integer': 'Limite deve ser um número inteiro',
-        'number.min': 'Limite deve ser maior que 0',
-        'number.max': 'Limite deve ser menor que 100'
+    name: Joi.string().min(1).max(100).optional().messages({
+        'string.min': 'Nome deve ter pelo menos 1 caractere',
+        'string.max': 'Nome deve ter no máximo 100 caracteres'
     }),
-    page: Joi.number().integer().min(0).optional().messages({
-        'number.base': 'Página deve ser um número',
-        'number.integer': 'Página deve ser um número inteiro',
-        'number.min': 'Página deve ser maior que 0'
+    isPaid: Joi.boolean().optional().messages({
+        'boolean.base': 'Status de pagamento deve ser true ou false'
     })
 });
 

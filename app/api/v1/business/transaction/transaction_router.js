@@ -12,7 +12,6 @@ const {
 const validator = require('../../../../utils/validator');
 const transactionController = new TransactionController();
 
-// Listagem e saldo
 router.get(
     '/',
     ensureAuthorization,

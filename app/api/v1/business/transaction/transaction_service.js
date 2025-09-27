@@ -97,19 +97,27 @@ class TransactionService extends BaseService {
 
     async getUserBalance(userId) {
         try {
-            const [income, expenses] = await Promise.all([
+            const [income, expenses, fixedAccountsTotal, loanAccountsTotal] = await Promise.all([
                 this._transactionModel.sum('value', {
                     where: { userId, type: 'INCOME' }
                 }),
                 this._transactionModel.sum('value', {
                     where: { userId, type: 'EXPENSE' }
+                }),
+                this._accountModel.sum('totalAmount', {
+                    where: { userId, type: 'FIXED' }
+                }),
+                this._accountModel.sum('totalAmount', {
+                    where: { userId, type: 'LOAN' }
                 })
             ]);
 
             return {
                 income: Number(income || 0),
                 expense: Number(expenses || 0),
-                balance: Number((income || 0) - (expenses || 0))
+                balance: Number((income || 0) - (expenses || 0)),
+                fixedAccountsTotal: Number(fixedAccountsTotal || 0),
+                loanAccountsTotal: Number(loanAccountsTotal || 0)
             };
         } catch (error) {
             throw new Error('BALANCE_CALCULATION_ERROR');
@@ -124,7 +132,6 @@ class TransactionService extends BaseService {
                 throw new Error('INVALID_INSTALLMENT_FOR_INCOME');
             }
 
-            // Validar categoria se fornecida
             if (category) {
                 await this._categoryValidator.validateCategoryExists(category, 'INCOME');
             }
@@ -177,7 +184,6 @@ class TransactionService extends BaseService {
             if (error.message === 'CATEGORY_NOT_FOUND' || error.message === 'CATEGORY_TYPE_MISMATCH') {
                 throw error;
             }
-            // Se for erro de validação de conta, re-throw o erro específico
             if (
                 error.message === 'INSUFFICIENT_PAYMENT_AMOUNT' ||
                 error.message === 'ACCOUNT_NOT_FOUND' ||
@@ -222,7 +228,6 @@ class TransactionService extends BaseService {
                 throw new Error('TRANSACTION_NOT_FOUND');
             }
 
-            // Não permitir deletar transação vinculada a parcela
             if (transaction.installmentId) {
                 throw new Error('CANNOT_DELETE_INSTALLMENT_TRANSACTION');
             }
@@ -437,7 +442,6 @@ class TransactionService extends BaseService {
                 };
             }
 
-            // Buscar gastos agrupados por categoria
             const expensesByCategory = await this._transactionModel.findAll({
                 where,
                 attributes: [
@@ -467,7 +471,6 @@ class TransactionService extends BaseService {
                 }, {});
             }
 
-            // Formatar resultado com porcentagem e informações da categoria
             const result = expensesByCategory.map((item) => {
                 const value = Number(item.totalValue);
                 const percentage = totalExpenses > 0 ? (value / totalExpenses) * 100 : 0;

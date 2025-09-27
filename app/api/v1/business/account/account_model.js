@@ -71,6 +71,42 @@ const Account = sequelize.define(
                 min: 1,
                 max: 31
             }
+        },
+        installmentAmount: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: true,
+            field: 'installment_amount',
+            validate: {
+                min: 0
+            },
+            get() {
+                const rawValue = this.getDataValue('installmentAmount');
+                return rawValue !== null ? Number(rawValue) : null;
+            }
+        },
+        totalWithInterest: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: true,
+            field: 'total_with_interest',
+            validate: {
+                min: 0
+            },
+            get() {
+                const rawValue = this.getDataValue('totalWithInterest');
+                return rawValue !== null ? Number(rawValue) : null;
+            }
+        },
+        principalAmount: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: true,
+            field: 'principal_amount',
+            validate: {
+                min: 0
+            },
+            get() {
+                const rawValue = this.getDataValue('principalAmount');
+                return rawValue !== null ? Number(rawValue) : null;
+            }
         }
     },
     {
@@ -93,11 +129,7 @@ const Account = sequelize.define(
                 fields: ['due_day']
             }
         ]
-        // Hooks removed - business logic moved to AccountService
     }
 );
-
-// Model contains only schema definition and simple getters/setters
-// All business logic has been moved to AccountService
 
 module.exports = Account;

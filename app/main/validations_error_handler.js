@@ -29,7 +29,6 @@ class ValidationsErrorHandler extends BaseErrorHandler {
                 };
             }
 
-            // Se não tem details, retorna erro padrão
             const status = data?.status ?? 422;
             const errorName = 'VALIDATION_ERROR';
             return {
@@ -39,7 +38,6 @@ class ValidationsErrorHandler extends BaseErrorHandler {
                 status
             };
         } catch (error) {
-            // Fallback em caso de erro
             return {
                 message: 'Validation error',
                 key: 'VALIDATION_ERROR',

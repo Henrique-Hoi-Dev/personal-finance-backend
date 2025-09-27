@@ -33,14 +33,11 @@ class AccountService extends BaseService {
                 attributes: ['id', 'name', 'type', 'isPaid', 'totalAmount', 'installments', 'startDate', 'dueDay']
             });
 
-            // Garantir que as parcelas estejam ordenadas corretamente
             if (account && account.installmentList) {
                 account.installmentList.sort((a, b) => {
-                    // Primeiro por número da parcela
                     if (a.number !== b.number) {
                         return a.number - b.number;
                     }
-                    // Se o número for igual, ordenar por data de criação
                     return new Date(a.created_at) - new Date(b.created_at);
                 });
             }
@@ -61,9 +58,11 @@ class AccountService extends BaseService {
 
     async create(accountData) {
         try {
-            const account = await this._accountModel.create(accountData);
+            // Calcular valores automaticamente para financiamentos/empréstimos
+            const processedData = this._processLoanData(accountData);
 
-            // Se é uma conta parcelada, criar as parcelas
+            const account = await this._accountModel.create(processedData);
+
             if (account.installments && account.installments > 0 && account.totalAmount) {
                 await this._installmentService.createInstallments(
                     account.id,
@@ -76,7 +75,6 @@ class AccountService extends BaseService {
 
             return account;
         } catch (error) {
-            // Re-throw erros específicos do InstallmentService
             if (error.message === 'INSTALLMENT_PAYMENT_ERROR') {
                 throw error;
             }
@@ -99,7 +97,6 @@ class AccountService extends BaseService {
         try {
             return await this._installmentService.findUnpaidByAccount(accountId, options);
         } catch (error) {
-            // Re-throw erros específicos do InstallmentService
             if (error.message === 'INSTALLMENT_FETCH_ERROR') {
                 throw error;
             }
@@ -111,7 +108,6 @@ class AccountService extends BaseService {
         try {
             return await this._installmentService.findOverdue(accountId, options);
         } catch (error) {
-            // Re-throw erros específicos do InstallmentService
             if (error.message === 'INSTALLMENT_FETCH_ERROR') {
                 throw error;
             }
@@ -176,9 +172,8 @@ class AccountService extends BaseService {
 
     async list(options = {}) {
         try {
-            const { limit = 10, page = 0, userId, type } = options;
+            const { userId, type, name, isPaid } = options;
 
-            // Verificar e atualizar contas fixas antes de buscar contas
             if (userId) {
                 await this.checkAndUpdateFixedAccounts(userId);
             }
@@ -190,12 +185,17 @@ class AccountService extends BaseService {
             if (type) {
                 where.type = type;
             }
+            if (name) {
+                where.name = {
+                    [Op.iLike]: `%${name}%`
+                };
+            }
+            if (isPaid !== undefined && isPaid !== null) {
+                where.isPaid = isPaid === 'true' || isPaid === true;
+            }
 
-            const offset = parseInt(page) * parseInt(limit);
-            const { rows, count } = await this._accountModel.findAndCountAll({
+            const accounts = await this._accountModel.findAll({
                 where,
-                limit: parseInt(limit),
-                offset: offset,
                 order: [['created_at', 'DESC']],
                 include: [
                     {
@@ -211,29 +211,18 @@ class AccountService extends BaseService {
                 ]
             });
 
-            // Garantir que as parcelas de cada conta estejam ordenadas corretamente
-            rows.forEach((account) => {
+            accounts.forEach((account) => {
                 if (account.installmentList) {
                     account.installmentList.sort((a, b) => {
-                        // Primeiro por número da parcela
                         if (a.number !== b.number) {
                             return a.number - b.number;
                         }
-                        // Se o número for igual, ordenar por data de criação
                         return new Date(a.created_at) - new Date(b.created_at);
                     });
                 }
             });
 
-            return {
-                docs: rows,
-                total: count,
-                limit: parseInt(limit),
-                page: parseInt(page),
-                offset: offset,
-                hasNextPage: offset + parseInt(limit) < count,
-                hasPrevPage: parseInt(page) > 0
-            };
+            return accounts;
         } catch (error) {
             throw new Error('ACCOUNT_LIST_ERROR');
         }
@@ -330,12 +319,10 @@ class AccountService extends BaseService {
                 throw new Error('ACCOUNT_ALREADY_PAID');
             }
 
-            // Validar se o valor do pagamento é suficiente
             if (account.totalAmount && paymentAmount < account.totalAmount) {
                 throw new Error('INSUFFICIENT_PAYMENT_AMOUNT');
             }
 
-            // Se é uma conta parcelada, marcar todas as parcelas como pagas
             if (this.isInstallmentAccount(account)) {
                 const unpaidInstallments = await this._installmentModel.findAll({
                     where: {
@@ -351,11 +338,9 @@ class AccountService extends BaseService {
                 }
             }
 
-            // Marcar conta como paga
             account.isPaid = true;
             await account.save();
 
-            // Criar transação de pagamento
             const transaction = await this._transactionService.createAccountPayment(account, userId, paymentAmount);
 
             return {
@@ -363,7 +348,6 @@ class AccountService extends BaseService {
                 transaction
             };
         } catch (error) {
-            // Re-throw erros específicos
             if (
                 error.message === 'ACCOUNT_NOT_FOUND' ||
                 error.message === 'ACCOUNT_ALREADY_PAID' ||
@@ -373,6 +357,67 @@ class AccountService extends BaseService {
             }
             throw new Error('ACCOUNT_PAYMENT_ERROR');
         }
+    }
+
+    /**
+     * Processa dados de financiamento/empréstimo para calcular valores automaticamente
+     * @param {Object} accountData - Dados da conta
+     * @returns {Object} - Dados processados com cálculos automáticos
+     */
+    _processLoanData(accountData) {
+        const { type, installmentAmount, installments, totalAmount, principalAmount, totalWithInterest } = accountData;
+
+        // Se não for empréstimo/financiamento, retorna dados originais
+        if (type !== 'LOAN') {
+            return accountData;
+        }
+
+        const processedData = { ...accountData };
+
+        // Cenário 1: Usuário informou valor da parcela e número de parcelas
+        if (installmentAmount && installments) {
+            const calculatedTotal = installmentAmount * installments;
+            processedData.totalAmount = calculatedTotal;
+            processedData.totalWithInterest = calculatedTotal;
+
+            // Se não informou valor principal, assume que é o mesmo do total
+            if (!principalAmount) {
+                processedData.principalAmount = calculatedTotal;
+            }
+        }
+
+        // Cenário 2: Usuário informou valor principal e total com juros
+        else if (principalAmount && totalWithInterest) {
+            processedData.totalAmount = totalWithInterest;
+            processedData.principalAmount = principalAmount;
+
+            // Calcula valor da parcela se tiver número de parcelas
+            if (installments) {
+                processedData.installmentAmount = Math.round(totalWithInterest / installments);
+            }
+        }
+
+        // Cenário 3: Usuário informou valor principal e valor da parcela
+        else if (principalAmount && installmentAmount && installments) {
+            const calculatedTotal = installmentAmount * installments;
+            processedData.totalAmount = calculatedTotal;
+            processedData.totalWithInterest = calculatedTotal;
+            processedData.principalAmount = principalAmount;
+        }
+
+        // Cenário 4: Usuário informou apenas valor total (comportamento original)
+        else if (totalAmount) {
+            processedData.totalAmount = totalAmount;
+            processedData.totalWithInterest = totalAmount;
+            processedData.principalAmount = totalAmount;
+
+            // Calcula valor da parcela se tiver número de parcelas
+            if (installments) {
+                processedData.installmentAmount = Math.round(totalAmount / installments);
+            }
+        }
+
+        return processedData;
     }
 }
 

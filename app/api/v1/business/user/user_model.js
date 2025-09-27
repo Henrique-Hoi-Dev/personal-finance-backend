@@ -88,7 +88,6 @@ const User = sequelize.define(
         ],
         hooks: {
             beforeCreate: async (user) => {
-                // Password is required for user creation
                 if (!user.hash_password) {
                     throw new Error('Password is required for user creation');
                 }
@@ -96,8 +95,5 @@ const User = sequelize.define(
         }
     }
 );
-
-// Model contains only schema definition and simple getters/setters
-// All business logic has been moved to UserService
 
 module.exports = User;

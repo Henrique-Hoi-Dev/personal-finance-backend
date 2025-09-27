@@ -49,7 +49,6 @@ class InstallmentService extends BaseService {
                 ]
             });
 
-            // PRIMEIRO: Excluir a parcela original
             await this._installmentModel.destroy({ where: { id } });
 
             if (remainingInstallments.length === 0) {
@@ -58,8 +57,6 @@ class InstallmentService extends BaseService {
 
             const totalAccountAmount = account.totalAmount;
             const newAmountPerInstallment = Math.round(totalAccountAmount / remainingInstallments.length);
-
-            // SEGUNDO: Renumerar as parcelas restantes
             for (let i = 0; i < remainingInstallments.length; i++) {
                 const installment = remainingInstallments[i];
                 installment.number = i + 1;
@@ -253,7 +250,6 @@ class InstallmentService extends BaseService {
                 transaction
             };
         } catch (error) {
-            // Re-throw erros específicos
             if (error.message === 'INSTALLMENT_NOT_FOUND' || error.message === 'INSTALLMENT_ALREADY_PAID') {
                 throw error;
             }
