@@ -96,15 +96,28 @@ const Account = sequelize.define(
                 return rawValue !== null ? Number(rawValue) : null;
             }
         },
-        principalAmount: {
+        interestRate: {
             type: DataTypes.DECIMAL(10, 2),
             allowNull: true,
-            field: 'principal_amount',
+            field: 'interest_rate',
             validate: {
                 min: 0
             },
             get() {
-                const rawValue = this.getDataValue('principalAmount');
+                const rawValue = this.getDataValue('interestRate');
+                return rawValue !== null ? Number(rawValue) : null;
+            }
+        },
+        monthlyInterestRate: {
+            type: DataTypes.DECIMAL(5, 2),
+            allowNull: true,
+            field: 'monthly_interest_rate',
+            validate: {
+                min: 0,
+                max: 999.99
+            },
+            get() {
+                const rawValue = this.getDataValue('monthlyInterestRate');
                 return rawValue !== null ? Number(rawValue) : null;
             }
         }

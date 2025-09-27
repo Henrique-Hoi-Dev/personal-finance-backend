@@ -45,11 +45,32 @@ const createSchema = Joi.object({
         'number.integer': 'Valor total com juros deve ser um número inteiro (centavos)',
         'number.min': 'Valor total com juros deve ser maior ou igual a 0 centavos'
     }),
-    principalAmount: Joi.number().integer().min(0).optional().messages({
-        'number.base': 'Valor principal deve ser um número inteiro',
-        'number.integer': 'Valor principal deve ser um número inteiro (centavos)',
-        'number.min': 'Valor principal deve ser maior ou igual a 0 centavos'
+    interestRate: Joi.number().integer().min(0).optional().messages({
+        'number.base': 'Taxa de juros deve ser um número inteiro',
+        'number.integer': 'Taxa de juros deve ser um número inteiro (centavos)',
+        'number.min': 'Taxa de juros deve ser maior ou igual a 0 centavos'
+    }),
+    monthlyInterestRate: Joi.number().precision(2).min(0).max(999.99).optional().messages({
+        'number.base': 'Taxa de juros mensal deve ser um número',
+        'number.min': 'Taxa de juros mensal deve ser maior ou igual a 0',
+        'number.max': 'Taxa de juros mensal deve ser menor ou igual a 999.99'
     })
+}).custom((value, helpers) => {
+    // Validação customizada para empréstimos
+    if (value.type === 'LOAN') {
+        if (!value.installmentAmount) {
+            return helpers.error('any.custom', { message: 'Para empréstimos, o valor da parcela é obrigatório' });
+        }
+        if (!value.installments) {
+            return helpers.error('any.custom', { message: 'Para empréstimos, o número de parcelas é obrigatório' });
+        }
+        if (!value.totalAmount) {
+            return helpers.error('any.custom', {
+                message: 'Para empréstimos, o valor principal (totalAmount) é obrigatório'
+            });
+        }
+    }
+    return value;
 });
 
 const updateSchema = Joi.object({
@@ -61,7 +82,8 @@ const updateSchema = Joi.object({
     installments: Joi.number().integer().min(1).optional(),
     installmentAmount: Joi.number().integer().min(0).optional(),
     totalWithInterest: Joi.number().integer().min(0).optional(),
-    principalAmount: Joi.number().integer().min(0).optional()
+    interestRate: Joi.number().integer().min(0).optional(),
+    monthlyInterestRate: Joi.number().precision(2).min(0).max(999.99).optional()
 })
     .min(1)
     .messages({

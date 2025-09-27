@@ -30,7 +30,20 @@ class AccountService extends BaseService {
                         ]
                     }
                 ],
-                attributes: ['id', 'name', 'type', 'isPaid', 'totalAmount', 'installments', 'startDate', 'dueDay']
+                attributes: [
+                    'id',
+                    'name',
+                    'type',
+                    'isPaid',
+                    'totalAmount',
+                    'installments',
+                    'startDate',
+                    'dueDay',
+                    'totalWithInterest',
+                    'interestRate',
+                    'monthlyInterestRate',
+                    'installmentAmount'
+                ]
             });
 
             if (account && account.installmentList) {
@@ -41,9 +54,16 @@ class AccountService extends BaseService {
                     return new Date(a.created_at) - new Date(b.created_at);
                 });
             }
+            if (!account) {
+                throw new Error('ACCOUNT_NOT_FOUND');
+            }
 
             return account;
         } catch (error) {
+            if (error.message === 'ACCOUNT_NOT_FOUND') {
+                throw error;
+            }
+
             throw new Error('ACCOUNT_FETCH_ERROR');
         }
     }
@@ -58,22 +78,29 @@ class AccountService extends BaseService {
 
     async create(accountData) {
         try {
-            // Calcular valores automaticamente para financiamentos/empréstimos
-            const processedData = this._processLoanData(accountData);
+            if (accountData.type === 'LOAN' && accountData.installmentAmount && accountData.installments) {
+                const calculatedData = this._calculateLoanAmounts(accountData);
+                accountData = { ...accountData, ...calculatedData };
+            }
+            console.log('accountData', accountData);
 
-            const account = await this._accountModel.create(processedData);
+            const account = await this._accountModel.create(accountData);
 
-            if (account.installments && account.installments > 0 && account.totalAmount) {
-                await this._installmentService.createInstallments(
-                    account.id,
-                    account.totalAmount,
-                    account.installments,
-                    account.startDate,
-                    account.dueDay
-                );
+            if (account.installments && account.installments > 0) {
+                const amountToUse = account.type === 'LOAN' ? account.totalWithInterest : account.totalAmount;
+
+                if (amountToUse) {
+                    await this._installmentService.createInstallments(
+                        account.id,
+                        amountToUse,
+                        account.installments,
+                        account.startDate,
+                        account.dueDay
+                    );
+                }
             }
 
-            return account;
+            return await this.getById(account.id);
         } catch (error) {
             if (error.message === 'INSTALLMENT_PAYMENT_ERROR') {
                 throw error;
@@ -117,6 +144,69 @@ class AccountService extends BaseService {
 
     isInstallmentAccount(account) {
         return account.installments && account.installments > 0;
+    }
+
+    /**
+     * Calcula os valores de empréstimo baseado no valor da parcela
+     * @param {Object} accountData - Dados da conta com installmentAmount e installments
+     * @returns {Object} - Objeto com totalWithInterest, totalAmount e interestRate
+     */
+    _calculateLoanAmounts(accountData) {
+        const { installmentAmount, installments, totalAmount } = accountData;
+
+        const totalWithInterest = installmentAmount * installments;
+        const interestAmount = totalWithInterest - totalAmount;
+
+        // Calcular taxa mensal usando fórmula do sistema Price
+        // PMT = (P * i) / (1 - (1 + i) ^ -n)
+        // Onde: PMT = installmentAmount, P = totalAmount, n = installments, i = taxa mensal
+        const monthlyInterestRate = this._calculateMonthlyInterestRate(installmentAmount, totalAmount, installments);
+
+        return {
+            totalWithInterest,
+            totalAmount,
+            interestRate: interestAmount,
+            monthlyInterestRate: monthlyInterestRate
+        };
+    }
+
+    /**
+     * Calcula a taxa de juros mensal usando a fórmula do sistema Price
+     * @param {number} pmt - Valor da parcela (installmentAmount)
+     * @param {number} main - Valor principal (totalAmount)
+     * @param {number} periods - Número de parcelas (installments)
+     * @returns {number} - Taxa de juros mensal em percentual
+     */
+    _calculateMonthlyInterestRate(pmt, principal, periods) {
+        if (principal <= 0 || periods <= 0) return 0;
+
+        // 🔹 Normaliza: converte de centavos para reais
+        const pmtReal = pmt / 100;
+        const principalReal = principal / 100;
+        console.log('pmtReal', pmtReal);
+        console.log('principalReal', principalReal);
+        let rate = 0.01; // chute inicial 1%
+        const tolerance = 1e-7;
+        const maxIterations = 100;
+
+        for (let i = 0; i < maxIterations; i++) {
+            const pow = Math.pow(1 + rate, -periods);
+            const f = (principalReal * rate) / (1 - pow) - pmtReal;
+
+            if (Math.abs(f) < tolerance) break;
+
+            const fPrime =
+                (principalReal * (Math.pow(1 + rate, -periods) * (periods * rate + 1) - 1)) / Math.pow(1 - pow, 2);
+
+            rate -= f / fPrime;
+
+            if (rate <= 0) rate = 0.0001; // evita zero
+            if (rate > 1) rate = 0.5; // evita explosão
+        }
+
+        console.log('rate', rate);
+        // 🔹 Retorna em porcentagem (%) com 2 casas decimais
+        return Math.round(rate * 10000) / 100;
     }
 
     async findByUser(userId) {
@@ -357,67 +447,6 @@ class AccountService extends BaseService {
             }
             throw new Error('ACCOUNT_PAYMENT_ERROR');
         }
-    }
-
-    /**
-     * Processa dados de financiamento/empréstimo para calcular valores automaticamente
-     * @param {Object} accountData - Dados da conta
-     * @returns {Object} - Dados processados com cálculos automáticos
-     */
-    _processLoanData(accountData) {
-        const { type, installmentAmount, installments, totalAmount, principalAmount, totalWithInterest } = accountData;
-
-        // Se não for empréstimo/financiamento, retorna dados originais
-        if (type !== 'LOAN') {
-            return accountData;
-        }
-
-        const processedData = { ...accountData };
-
-        // Cenário 1: Usuário informou valor da parcela e número de parcelas
-        if (installmentAmount && installments) {
-            const calculatedTotal = installmentAmount * installments;
-            processedData.totalAmount = calculatedTotal;
-            processedData.totalWithInterest = calculatedTotal;
-
-            // Se não informou valor principal, assume que é o mesmo do total
-            if (!principalAmount) {
-                processedData.principalAmount = calculatedTotal;
-            }
-        }
-
-        // Cenário 2: Usuário informou valor principal e total com juros
-        else if (principalAmount && totalWithInterest) {
-            processedData.totalAmount = totalWithInterest;
-            processedData.principalAmount = principalAmount;
-
-            // Calcula valor da parcela se tiver número de parcelas
-            if (installments) {
-                processedData.installmentAmount = Math.round(totalWithInterest / installments);
-            }
-        }
-
-        // Cenário 3: Usuário informou valor principal e valor da parcela
-        else if (principalAmount && installmentAmount && installments) {
-            const calculatedTotal = installmentAmount * installments;
-            processedData.totalAmount = calculatedTotal;
-            processedData.totalWithInterest = calculatedTotal;
-            processedData.principalAmount = principalAmount;
-        }
-
-        // Cenário 4: Usuário informou apenas valor total (comportamento original)
-        else if (totalAmount) {
-            processedData.totalAmount = totalAmount;
-            processedData.totalWithInterest = totalAmount;
-            processedData.principalAmount = totalAmount;
-
-            // Calcula valor da parcela se tiver número de parcelas
-            if (installments) {
-                processedData.installmentAmount = Math.round(totalAmount / installments);
-            }
-        }
-
-        return processedData;
     }
 }
 

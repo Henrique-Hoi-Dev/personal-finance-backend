@@ -34,6 +34,12 @@ module.exports = {
                 type: Sequelize.ENUM('FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER'),
                 allowNull: false
             },
+            is_paid: {
+                type: Sequelize.BOOLEAN,
+                allowNull: false,
+                defaultValue: false,
+                comment: 'Indica se a conta está completamente paga'
+            },
             total_amount: {
                 type: Sequelize.DECIMAL(10, 2),
                 allowNull: true,
@@ -60,6 +66,33 @@ module.exports = {
                     max: 31
                 }
             },
+            installment_amount: {
+                type: Sequelize.DECIMAL(10, 2),
+                allowNull: true,
+                comment: 'Valor da parcela para financiamentos/empréstimos'
+            },
+            total_with_interest: {
+                type: Sequelize.DECIMAL(10, 2),
+                allowNull: true,
+                comment: 'Valor total com juros para financiamentos/empréstimos'
+            },
+            interest_rate: {
+                type: Sequelize.DECIMAL(10, 2),
+                allowNull: true,
+                validate: {
+                    min: 0
+                },
+                comment: 'Valor absoluto dos juros em centavos'
+            },
+            monthly_interest_rate: {
+                type: Sequelize.DECIMAL(5, 2),
+                allowNull: true,
+                validate: {
+                    min: 0,
+                    max: 999.99
+                },
+                comment: 'Taxa de juros mensal em percentual'
+            },
             created_at: {
                 type: Sequelize.DATE,
                 allowNull: false,
@@ -77,6 +110,7 @@ module.exports = {
         await queryInterface.addIndex('accounts', ['type']);
         await queryInterface.addIndex('accounts', ['start_date']);
         await queryInterface.addIndex('accounts', ['due_day']);
+        await queryInterface.addIndex('accounts', ['is_paid']);
         await queryInterface.addIndex('accounts', ['created_at']);
     },
 

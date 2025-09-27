@@ -97,12 +97,19 @@ class TransactionService extends BaseService {
 
     async getUserBalance(userId) {
         try {
-            const [income, expenses, fixedAccountsTotal, loanAccountsTotal] = await Promise.all([
+            const [income, totalExpenses, linkedExpenses, fixedAccountsTotal, loanAccountsTotal] = await Promise.all([
                 this._transactionModel.sum('value', {
                     where: { userId, type: 'INCOME' }
                 }),
                 this._transactionModel.sum('value', {
                     where: { userId, type: 'EXPENSE' }
+                }),
+                this._transactionModel.sum('value', {
+                    where: {
+                        userId,
+                        type: 'EXPENSE',
+                        [Op.or]: [{ accountId: { [Op.ne]: null } }, { installmentId: { [Op.ne]: null } }]
+                    }
                 }),
                 this._accountModel.sum('totalAmount', {
                     where: { userId, type: 'FIXED' }
@@ -112,10 +119,16 @@ class TransactionService extends BaseService {
                 })
             ]);
 
+            const totalExpensesValue = Number(totalExpenses || 0);
+            const linkedExpensesValue = Number(linkedExpenses || 0);
+            const standaloneExpenses = totalExpensesValue - linkedExpensesValue;
+
             return {
                 income: Number(income || 0),
-                expense: Number(expenses || 0),
-                balance: Number((income || 0) - (expenses || 0)),
+                expense: totalExpensesValue,
+                linkedExpenses: linkedExpensesValue,
+                standaloneExpenses: standaloneExpenses,
+                balance: Number((income || 0) - totalExpensesValue),
                 fixedAccountsTotal: Number(fixedAccountsTotal || 0),
                 loanAccountsTotal: Number(loanAccountsTotal || 0)
             };

@@ -236,9 +236,13 @@ describe('TransactionController', () => {
     describe('getBalance', () => {
         it('should get user balance successfully', async () => {
             const mockBalance = {
-                income: 1000000, // R$ 10.000,00 em centavos
-                expense: 300000, // R$ 3.000,00 em centavos
-                balance: 700000 // R$ 7.000,00 em centavos
+                income: 1000000,
+                expense: 300000,
+                linkedExpenses: 200000,
+                standaloneExpenses: 100000,
+                balance: 700000,
+                fixedAccountsTotal: 500000,
+                loanAccountsTotal: 800000
             };
 
             mockTransactionService.getUserBalance = jest.fn().mockResolvedValue(mockBalance);
