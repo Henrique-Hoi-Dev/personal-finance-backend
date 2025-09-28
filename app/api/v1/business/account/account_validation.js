@@ -10,10 +10,13 @@ const createSchema = Joi.object({
         'string.max': 'Nome deve ter no máximo 100 caracteres',
         'any.required': 'Nome é obrigatório'
     }),
-    type: Joi.string().valid('FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER').required().messages({
-        'any.only': 'Tipo deve ser FIXED, LOAN, CREDIT_CARD, SUBSCRIPTION ou OTHER',
-        'any.required': 'Tipo é obrigatório'
-    }),
+    type: Joi.string()
+        .valid('FIXED', 'FIXED_PREVIEW', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER')
+        .required()
+        .messages({
+            'any.only': 'Tipo deve ser FIXED, FIXED_PREVIEW, LOAN, CREDIT_CARD, SUBSCRIPTION ou OTHER',
+            'any.required': 'Tipo é obrigatório'
+        }),
     startDate: Joi.date().iso().required().messages({
         'date.format': 'Data de início deve estar no formato ISO',
         'any.required': 'Data de início é obrigatória'
@@ -78,7 +81,7 @@ const createSchema = Joi.object({
 
 const updateSchema = Joi.object({
     name: Joi.string().min(1).max(100).optional(),
-    type: Joi.string().valid('FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER').optional(),
+    type: Joi.string().valid('FIXED', 'FIXED_PREVIEW', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER').optional(),
     startDate: Joi.date().iso().optional(),
     dueDay: Joi.number().integer().min(1).max(31).optional(),
     totalAmount: Joi.number().integer().min(0).optional(),
@@ -95,7 +98,7 @@ const updateSchema = Joi.object({
     });
 
 const getAllValidation = Joi.object({
-    type: Joi.string().valid('FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER').optional(),
+    type: Joi.string().valid('FIXED', 'FIXED_PREVIEW', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER').optional(),
     name: Joi.string().min(1).max(100).optional().messages({
         'string.min': 'Nome deve ter pelo menos 1 caractere',
         'string.max': 'Nome deve ter no máximo 100 caracteres'

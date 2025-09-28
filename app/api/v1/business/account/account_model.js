@@ -27,10 +27,10 @@ const Account = sequelize.define(
             }
         },
         type: {
-            type: DataTypes.ENUM('FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER'),
+            type: DataTypes.ENUM('FIXED', 'FIXED_PREVIEW', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER'),
             allowNull: false,
             validate: {
-                isIn: [['FIXED', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER']]
+                isIn: [['FIXED', 'FIXED_PREVIEW', 'LOAN', 'CREDIT_CARD', 'SUBSCRIPTION', 'OTHER']]
             }
         },
         isPaid: {

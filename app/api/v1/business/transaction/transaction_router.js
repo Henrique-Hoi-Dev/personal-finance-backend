@@ -27,6 +27,7 @@ router.get(
     validator(getBalanceValidation),
     transactionController.getBalance.bind(transactionController)
 );
+
 router.get(
     '/expenses-by-category',
     ensureAuthorization,

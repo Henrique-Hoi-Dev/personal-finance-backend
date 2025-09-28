@@ -110,9 +110,36 @@ const getExpensesByCategoryValidation = Joi.object({
     }),
     endDate: Joi.date().iso().optional().messages({
         'date.format': 'Data de fim deve estar no formato ISO (YYYY-MM-DD)'
+    }),
+    year: Joi.number().integer().min(2020).max(2030).optional().messages({
+        'number.base': 'Ano deve ser um número',
+        'number.integer': 'Ano deve ser um número inteiro',
+        'number.min': 'Ano deve ser maior ou igual a 2020',
+        'number.max': 'Ano deve ser menor ou igual a 2030'
+    }),
+    month: Joi.number().integer().min(1).max(12).optional().messages({
+        'number.base': 'Mês deve ser um número',
+        'number.integer': 'Mês deve ser um número inteiro',
+        'number.min': 'Mês deve ser entre 1 e 12',
+        'number.max': 'Mês deve ser entre 1 e 12'
     })
 })
     .custom((value, helpers) => {
+        // Se especificou ano, deve especificar mês também
+        if (value.year && !value.month) {
+            return helpers.error('any.custom', { message: 'Se especificar o ano, deve especificar o mês também' });
+        }
+        // Se especificou mês, deve especificar ano também
+        if (value.month && !value.year) {
+            return helpers.error('any.custom', { message: 'Se especificar o mês, deve especificar o ano também' });
+        }
+        // Não pode usar filtro de ano/mês junto com filtro de data
+        if ((value.year || value.month) && (value.startDate || value.endDate)) {
+            return helpers.error('any.custom', {
+                message: 'Não é possível usar filtro de ano/mês junto com filtro de data'
+            });
+        }
+        // Validação de data
         if (value.startDate && value.endDate && new Date(value.startDate) > new Date(value.endDate)) {
             return helpers.error('date.range', { startDate: value.startDate, endDate: value.endDate });
         }

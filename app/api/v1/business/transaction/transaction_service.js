@@ -37,15 +37,15 @@ class TransactionService extends BaseService {
 
             if (startDate && endDate) {
                 where.date = {
-                    [this._transactionModel.sequelize.Sequelize.Op.between]: [startDate, endDate]
+                    [Op.between]: [startDate, endDate]
                 };
             } else if (startDate) {
                 where.date = {
-                    [this._transactionModel.sequelize.Sequelize.Op.gte]: startDate
+                    [Op.gte]: startDate
                 };
             } else if (endDate) {
                 where.date = {
-                    [this._transactionModel.sequelize.Sequelize.Op.lte]: endDate
+                    [Op.lte]: endDate
                 };
             }
 
@@ -481,14 +481,26 @@ class TransactionService extends BaseService {
      */
     async getExpensesByCategory(userId, options = {}) {
         try {
-            const { startDate, endDate } = options;
+            const { startDate, endDate, year, month } = options;
 
             const where = {
                 userId,
                 type: 'EXPENSE'
             };
 
-            if (startDate && endDate) {
+            // Aplicar filtro de período (ano/mês) ou filtro de data
+            if (year && month !== undefined) {
+                // Filtro por ano/mês (mesmo do getUserBalance)
+                const targetYear = parseInt(year);
+                const targetMonth = parseInt(month) - 1; // Converter para 0-11
+
+                const startOfMonth = new Date(targetYear, targetMonth, 1);
+                const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+
+                where.date = {
+                    [Op.between]: [startOfMonth, endOfMonth]
+                };
+            } else if (startDate && endDate) {
                 where.date = {
                     [Op.between]: [startDate, endDate]
                 };
