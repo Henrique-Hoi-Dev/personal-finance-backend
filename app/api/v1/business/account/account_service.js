@@ -504,6 +504,7 @@ class AccountService extends BaseService {
             }
 
             account.isPaid = true;
+            account.isPreview = false;
             await account.save();
 
             const transaction = await this._transactionService.createAccountPayment(account, userId, paymentAmount);
