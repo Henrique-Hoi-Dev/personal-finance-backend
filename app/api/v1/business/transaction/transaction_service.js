@@ -116,61 +116,78 @@ class TransactionService extends BaseService {
             const startOfMonth = new Date(targetYear, targetMonth, 1);
             const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
 
-            const [income, totalExpenses, linkedExpenses, fixedAccountsTotal, loanAccountsTotal, totalAccounts] =
-                await Promise.all([
-                    this._transactionModel.sum('value', {
-                        where: {
-                            userId,
-                            type: 'INCOME',
-                            date: {
-                                [Op.between]: [startOfMonth, endOfMonth]
-                            }
+            const [income, totalExpenses, linkedExpenses, loanAccountsTotal, totalAccounts] = await Promise.all([
+                this._transactionModel.sum('value', {
+                    where: {
+                        userId,
+                        type: 'INCOME',
+                        date: {
+                            [Op.between]: [startOfMonth, endOfMonth]
                         }
-                    }),
-                    this._transactionModel.sum('value', {
-                        where: {
-                            userId,
-                            type: 'EXPENSE',
-                            date: {
-                                [Op.between]: [startOfMonth, endOfMonth]
-                            }
+                    }
+                }),
+                this._transactionModel.sum('value', {
+                    where: {
+                        userId,
+                        type: 'EXPENSE',
+                        date: {
+                            [Op.between]: [startOfMonth, endOfMonth]
                         }
-                    }),
-                    this._transactionModel.sum('value', {
-                        where: {
-                            userId,
-                            type: 'EXPENSE',
-                            date: {
-                                [Op.between]: [startOfMonth, endOfMonth]
-                            },
-                            [Op.or]: [{ accountId: { [Op.ne]: null } }, { installmentId: { [Op.ne]: null } }]
-                        }
-                    }),
-                    this._accountModel.sum('totalAmount', {
-                        where: { userId, type: 'FIXED' }
-                    }),
-                    this._accountModel.sum('totalAmount', {
-                        where: { userId, type: 'LOAN' }
-                    }),
+                    }
+                }),
+                this._transactionModel.sum('value', {
+                    where: {
+                        userId,
+                        type: 'EXPENSE',
+                        date: {
+                            [Op.between]: [startOfMonth, endOfMonth]
+                        },
+                        [Op.or]: [{ accountId: { [Op.ne]: null } }, { installmentId: { [Op.ne]: null } }]
+                    }
+                }),
+                this._accountModel.sum('totalAmount', {
+                    where: { userId, type: 'LOAN' }
+                }),
 
-                    this._accountModel.sum('totalAmount', {
-                        where: { userId }
-                    })
-                ]);
+                this._accountModel.sum('totalAmount', {
+                    where: {
+                        userId
+                    }
+                })
+            ]);
+
+            const fixedAccounts = await this._accountModel.findAll({
+                where: { userId, type: 'FIXED' },
+                attributes: ['totalAmount', 'installments'],
+                raw: true
+            });
+
+            const fixedSum = fixedAccounts.reduce((acc, item) => {
+                if (item.installments && item.installments > 0) {
+                    return acc + item.totalAmount / item.installments;
+                }
+                return acc + item.totalAmount;
+            }, 0);
+
+            const fixedPreviewSum = await this._accountModel.sum('totalAmount', {
+                where: { userId, type: 'FIXED_PREVIEW' }
+            });
+
+            const fixedAccountsTotal = (fixedSum || 0) + (fixedPreviewSum || 0);
 
             const totalExpensesValue = Number(totalExpenses || 0);
             const linkedExpensesValue = Number(linkedExpenses || 0);
             const standaloneExpenses = totalExpensesValue - linkedExpensesValue;
 
             return {
-                income: Number(income || 0),
-                expense: totalExpensesValue,
-                linkedExpenses: linkedExpensesValue,
-                standaloneExpenses: standaloneExpenses,
-                balance: Number((income || 0) - totalExpensesValue),
-                fixedAccountsTotal: Number(fixedAccountsTotal || 0),
-                loanAccountsTotal: Number(loanAccountsTotal || 0),
-                totalAccounts: Number(totalAccounts || 0),
+                income: Number(income || 0), // receitas totais
+                expense: totalExpensesValue, // gastos totais
+                linkedExpenses: linkedExpensesValue, // gastos com contas vinculadas
+                standaloneExpenses: standaloneExpenses, // gastos sem contas vinculadas
+                balance: Number((income || 0) - totalExpensesValue), // saldo total
+                fixedAccountsTotal: Number(fixedAccountsTotal || 0), // contas fixas com contas preview que vem o valor de uma parcela
+                loanAccountsTotal: Number(loanAccountsTotal || 0), // financiamento
+                totalAccounts: Number(totalAccounts || 0), // contas totais
                 period: {
                     year: targetYear,
                     month: targetMonth + 1,
