@@ -64,5 +64,9 @@
     "USER_PROFILE_ERROR": "Error getting user profile",
     "PASSWORD_HASH_ERROR": "Error generating password hash",
     "PASSWORD_VALIDATION_ERROR": "Error validating password",
-    "PASSWORD_UPDATE_ERROR": "Error updating password"
+    "PASSWORD_UPDATE_ERROR": "Error updating password",
+    "MONTH_AND_YEAR_REQUIRED": "Month and year are required",
+    "INVALID_MONTH": "Invalid month",
+    "INVALID_YEAR": "Invalid year",
+    "ACCOUNTS_BY_PERIOD_FETCH_ERROR": "Error fetching accounts by period"
 }

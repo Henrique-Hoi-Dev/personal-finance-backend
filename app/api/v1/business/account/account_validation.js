@@ -60,6 +60,18 @@ const createSchema = Joi.object({
     }),
     isPreview: Joi.boolean().optional().messages({
         'boolean.base': 'Campo isPreview deve ser true ou false'
+    }),
+    referenceMonth: Joi.number().integer().min(1).max(12).optional().messages({
+        'number.base': 'Mês de referência deve ser um número',
+        'number.integer': 'Mês de referência deve ser um número inteiro',
+        'number.min': 'Mês de referência deve ser maior ou igual a 1',
+        'number.max': 'Mês de referência deve ser menor ou igual a 12'
+    }),
+    referenceYear: Joi.number().integer().min(2020).max(2100).optional().messages({
+        'number.base': 'Ano de referência deve ser um número',
+        'number.integer': 'Ano de referência deve ser um número inteiro',
+        'number.min': 'Ano de referência deve ser maior ou igual a 2020',
+        'number.max': 'Ano de referência deve ser menor ou igual a 2100'
     })
 }).custom((value, helpers) => {
     // Validação customizada para empréstimos
@@ -105,7 +117,9 @@ const getAllValidation = Joi.object({
     }),
     isPaid: Joi.boolean().optional().messages({
         'boolean.base': 'Status de pagamento deve ser true ou false'
-    })
+    }),
+    month: Joi.number().integer().min(1).max(12).required(),
+    year: Joi.number().integer().min(2020).max(2100).required()
 });
 
 const getByIdValidation = Joi.object({

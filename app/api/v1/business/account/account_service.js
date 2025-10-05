@@ -3,6 +3,7 @@ const AccountModel = require('./account_model');
 const InstallmentService = require('../installment/installment_service');
 const InstallmentModel = require('../installment/installment_model');
 const TransactionService = require('../transaction/transaction_service');
+const MonthlySummaryService = require('../monthly_summary/monthly_summary_service');
 const { Op } = require('sequelize');
 
 class AccountService extends BaseService {
@@ -12,6 +13,7 @@ class AccountService extends BaseService {
         this._installmentService = new InstallmentService();
         this._installmentModel = InstallmentModel;
         this._transactionService = new TransactionService();
+        this._monthlySummaryService = new MonthlySummaryService();
     }
 
     async getById(id) {
@@ -80,8 +82,29 @@ class AccountService extends BaseService {
 
     async delete(id) {
         try {
-            return await this._accountModel.destroy({ where: { id } });
+            const accountToDelete = await this._accountModel.findByPk(id);
+            if (!accountToDelete) {
+                throw new Error('ACCOUNT_NOT_FOUND');
+            }
+
+            const result = await this._accountModel.destroy({ where: { id } });
+
+            try {
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    accountToDelete.userId,
+                    accountToDelete.referenceMonth,
+                    accountToDelete.referenceYear,
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.warn('Erro ao recalcular monthly summary após exclusão:', summaryError.message);
+            }
+
+            return result;
         } catch (error) {
+            if (error.message === 'ACCOUNT_NOT_FOUND') {
+                throw error;
+            }
             throw new Error('ACCOUNT_DELETION_ERROR');
         }
     }
@@ -92,6 +115,13 @@ class AccountService extends BaseService {
                 const calculatedData = this._calculateLoanAmounts(accountData);
                 accountData = { ...accountData, ...calculatedData };
             }
+
+            if (!accountData.referenceMonth || !accountData.referenceYear) {
+                const startDate = new Date(accountData.startDate);
+                accountData.referenceMonth = startDate.getMonth() + 1;
+                accountData.referenceYear = startDate.getFullYear();
+            }
+
             console.log('accountData', accountData);
 
             const account = await this._accountModel.create(accountData);
@@ -108,6 +138,21 @@ class AccountService extends BaseService {
                         account.dueDay
                     );
                 }
+            }
+
+            try {
+                if (account.installments && account.installments > 0) {
+                    await this._monthlySummaryService.generateSummariesForAccount(accountData.userId, account.id);
+                } else {
+                    await this._monthlySummaryService.calculateMonthlySummary(
+                        accountData.userId,
+                        accountData.referenceMonth,
+                        accountData.referenceYear,
+                        true
+                    );
+                }
+            } catch (summaryError) {
+                console.warn('Erro ao gerar monthly summaries:', summaryError.message);
             }
 
             return await this.getById(account.id);
@@ -127,7 +172,6 @@ class AccountService extends BaseService {
                 throw new Error('ACCOUNT_NOT_FOUND');
             }
 
-            // Se for empréstimo e tiver dados de cálculo, recalcular
             if (updateData.type === 'LOAN' || existingAccount.type === 'LOAN') {
                 if (updateData.installmentAmount && updateData.installments && updateData.totalAmount) {
                     const calculatedData = this._calculateLoanAmounts(updateData);
@@ -163,6 +207,20 @@ class AccountService extends BaseService {
                         );
                     }
                 }
+            }
+
+            // Recalcular monthly summary para o mês/ano da conta
+            try {
+                const updatedAccount = await this._accountModel.findByPk(id);
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    updatedAccount.userId,
+                    updatedAccount.referenceMonth,
+                    updatedAccount.referenceYear,
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.warn('Erro ao recalcular monthly summary:', summaryError.message);
+                // Não falha a atualização da conta se o summary falhar
             }
 
             return await this.getById(id);
@@ -327,13 +385,24 @@ class AccountService extends BaseService {
 
     async list(options = {}) {
         try {
-            const { userId, type, name, isPaid } = options;
+            const { userId, type, name, isPaid, month, year } = options;
 
             if (userId) {
                 await this.checkAndUpdateFixedAccounts(userId);
             }
+            const where = {
+                [Op.or]: [
+                    {
+                        referenceMonth: month,
+                        referenceYear: year
+                    },
+                    {
+                        '$installmentList.reference_month$': month,
+                        '$installmentList.reference_year$': year
+                    }
+                ]
+            };
 
-            const where = {};
             if (userId) {
                 where.userId = userId;
             }
@@ -352,43 +421,45 @@ class AccountService extends BaseService {
             const accounts = await this._accountModel.findAll({
                 where,
                 order: [['created_at', 'DESC']],
-                include: [
-                    {
-                        model: this._installmentModel,
-                        as: 'installmentList',
-                        attributes: ['id', 'number', 'amount', 'dueDate', 'isPaid', 'paidAt'],
-                        separate: true,
-                        order: [
-                            ['number', 'ASC'],
-                            ['created_at', 'ASC']
-                        ]
-                    }
-                ]
-            });
-
-            accounts.forEach((account) => {
-                if (account.installmentList) {
-                    account.installmentList.sort((a, b) => {
-                        if (a.number !== b.number) {
-                            return a.number - b.number;
-                        }
-                        return new Date(a.created_at) - new Date(b.created_at);
-                    });
-                }
-
-                // Para contas do tipo LOAN, calcular o valor já pago
-                if (account.type === 'LOAN' && account.installmentList) {
-                    const paidInstallments = account.installmentList.filter((installment) => installment.isPaid);
-                    const amountPaid = paidInstallments.reduce((total, installment) => {
-                        return total + (installment.amount || 0);
-                    }, 0);
-
-                    account.dataValues.amountPaid = amountPaid;
+                include: {
+                    where: {
+                        referenceMonth: month,
+                        referenceYear: year
+                    },
+                    required: false,
+                    model: this._installmentModel,
+                    as: 'installmentList',
+                    attributes: [
+                        'id',
+                        'number',
+                        'amount',
+                        'dueDate',
+                        'isPaid',
+                        'paidAt',
+                        'referenceMonth',
+                        'referenceYear'
+                    ],
+                    order: [
+                        ['number', 'ASC'],
+                        ['created_at', 'ASC']
+                    ]
                 }
             });
 
-            return accounts;
+            const parsed = accounts.map((a) => {
+                const account = a.toJSON();
+                if (account.installmentList && account.installmentList.length > 0) {
+                    account.installment = account.installmentList[0];
+                } else {
+                    account.installment = null;
+                }
+                delete account.installmentList;
+                return account;
+            });
+
+            return parsed;
         } catch (error) {
+            console.log('error', error);
             throw new Error('ACCOUNT_LIST_ERROR');
         }
     }
@@ -522,6 +593,233 @@ class AccountService extends BaseService {
                 throw error;
             }
             throw new Error('ACCOUNT_PAYMENT_ERROR');
+        }
+    }
+
+    /**
+     * Busca contas por período específico com paginação
+     * @param {string} userId - ID do usuário
+     * @param {number} month - Mês (1-12)
+     * @param {number} year - Ano
+     * @param {Object} options - Opções adicionais de filtro e paginação
+     * @returns {Promise<Object>} - Contas do período com metadados de paginação
+     */
+    async findByPeriod(userId, { month, year, type, isPaid, name, limit = 50, page = 0 } = {}) {
+        try {
+            // Validação de parâmetros
+            if (!month || !year) {
+                throw new Error('MONTH_AND_YEAR_REQUIRED');
+            }
+
+            if (month < 1 || month > 12) {
+                throw new Error('INVALID_MONTH');
+            }
+
+            if (year < 2020 || year > 2100) {
+                throw new Error('INVALID_YEAR');
+            }
+
+            const where = {
+                userId,
+                referenceMonth: month,
+                referenceYear: year
+            };
+
+            // Aplicar filtros adicionais
+            if (type) {
+                where.type = type;
+            }
+            if (isPaid !== undefined) {
+                where.isPaid = isPaid;
+            }
+            if (name) {
+                where.name = {
+                    [Op.iLike]: `%${name}%`
+                };
+            }
+
+            const offset = parseInt(page) * parseInt(limit);
+            const { rows: accounts, count } = await this._accountModel.findAndCountAll({
+                where,
+                limit: parseInt(limit),
+                offset: offset,
+                order: [['created_at', 'DESC']],
+                include: [
+                    {
+                        model: this._installmentModel,
+                        as: 'installmentList',
+                        attributes: ['id', 'number', 'amount', 'dueDate', 'isPaid', 'paidAt'],
+                        separate: true,
+                        order: [
+                            ['number', 'ASC'],
+                            ['created_at', 'ASC']
+                        ]
+                    }
+                ]
+            });
+
+            // Processar contas com parcelas
+            accounts.forEach((account) => {
+                if (account.installmentList) {
+                    account.installmentList.sort((a, b) => {
+                        if (a.number !== b.number) {
+                            return a.number - b.number;
+                        }
+                        return new Date(a.created_at) - new Date(b.created_at);
+                    });
+                }
+
+                // Para contas do tipo LOAN, calcular o valor já pago
+                if (account.type === 'LOAN' && account.installmentList) {
+                    const paidInstallments = account.installmentList.filter((installment) => installment.isPaid);
+                    const amountPaid = paidInstallments.reduce((total, installment) => {
+                        return total + (installment.amount || 0);
+                    }, 0);
+
+                    account.dataValues.amountPaid = amountPaid;
+                }
+            });
+
+            return {
+                docs: accounts,
+                total: count,
+                limit: parseInt(limit),
+                page: parseInt(page),
+                offset: offset,
+                hasNextPage: offset + parseInt(limit) < count,
+                hasPrevPage: parseInt(page) > 0
+            };
+        } catch (error) {
+            if (
+                error.message === 'MONTH_AND_YEAR_REQUIRED' ||
+                error.message === 'INVALID_MONTH' ||
+                error.message === 'INVALID_YEAR'
+            ) {
+                throw error;
+            }
+            throw new Error('ACCOUNTS_BY_PERIOD_FETCH_ERROR');
+        }
+    }
+
+    /**
+     * Busca contas a pagar de um período específico
+     * @param {string} userId - ID do usuário
+     * @param {number} month - Mês (1-12)
+     * @param {number} year - Ano
+     * @returns {Promise<Array>} - Contas não pagas do período
+     */
+    async findUnpaidByPeriod(userId, { month, year }) {
+        try {
+            const result = await this.findByPeriod(userId, { month, year, isPaid: false, limit: 10000, page: 0 });
+            const accounts = result.docs;
+            return accounts;
+        } catch (error) {
+            throw new Error('UNPAID_ACCOUNTS_BY_PERIOD_FETCH_ERROR');
+        }
+    }
+
+    /**
+     * Busca estatísticas de contas por período
+     * @param {string} userId - ID do usuário
+     * @param {number} month - Mês (1-12)
+     * @param {number} year - Ano
+     * @returns {Promise<Object>} - Estatísticas do período
+     */
+    async getPeriodStatistics(userId, { month, year } = {}) {
+        try {
+            const result = await this.findByPeriod(userId, { month, year, limit: 10000, page: 0 });
+            const accounts = result.docs;
+
+            const totalAccounts = accounts.length;
+            const paidAccounts = accounts.filter((account) => account.isPaid).length;
+            const unpaidAccounts = totalAccounts - paidAccounts;
+
+            const totalAmount = accounts.reduce((sum, account) => {
+                return sum + (account.totalAmount || account.installmentAmount || 0);
+            }, 0);
+
+            const paidAmount = accounts
+                .filter((account) => account.isPaid)
+                .reduce((sum, account) => {
+                    return sum + (account.totalAmount || account.installmentAmount || 0);
+                }, 0);
+
+            const unpaidAmount = totalAmount - paidAmount;
+
+            // Estatísticas por tipo
+            const typeStats = {};
+            accounts.forEach((account) => {
+                if (!typeStats[account.type]) {
+                    typeStats[account.type] = {
+                        total: 0,
+                        paid: 0,
+                        unpaid: 0,
+                        amount: 0
+                    };
+                }
+                typeStats[account.type].total++;
+                if (account.isPaid) {
+                    typeStats[account.type].paid++;
+                } else {
+                    typeStats[account.type].unpaid++;
+                }
+                typeStats[account.type].amount += account.totalAmount || account.installmentAmount || 0;
+            });
+
+            return {
+                period: { month, year },
+                totalAccounts,
+                paidAccounts,
+                unpaidAccounts,
+                totalAmount,
+                paidAmount,
+                unpaidAmount,
+                typeStats
+            };
+        } catch (error) {
+            throw new Error('PERIOD_STATISTICS_FETCH_ERROR');
+        }
+    }
+
+    /**
+     * Atualiza referência temporal de uma conta
+     * @param {string} accountId - ID da conta
+     * @param {number} month - Mês (1-12)
+     * @param {number} year - Ano
+     * @returns {Promise<Object>} - Conta atualizada
+     */
+    async updateTemporalReference(accountId, { month, year }) {
+        try {
+            // Validação de parâmetros
+            if (!month || !year) {
+                throw new Error('MONTH_AND_YEAR_REQUIRED');
+            }
+
+            if (month < 1 || month > 12) {
+                throw new Error('INVALID_MONTH');
+            }
+
+            if (year < 2020 || year > 2100) {
+                throw new Error('INVALID_YEAR');
+            }
+
+            const account = await this._accountModel.findByPk(accountId);
+
+            if (!account) {
+                throw new Error('ACCOUNT_NOT_FOUND');
+            }
+
+            await account.update({
+                referenceMonth: month,
+                referenceYear: year
+            });
+
+            return await this.getById(accountId);
+        } catch (error) {
+            if (error.message === 'ACCOUNT_NOT_FOUND') {
+                throw error;
+            }
+            throw new Error('ACCOUNT_TEMPORAL_UPDATE_ERROR');
         }
     }
 }

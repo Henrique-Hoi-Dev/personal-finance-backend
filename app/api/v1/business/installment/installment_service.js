@@ -1,6 +1,7 @@
 const InstallmentModel = require('./installment_model');
 const AccountModel = require('../account/account_model');
 const TransactionService = require('../transaction/transaction_service');
+const MonthlySummaryService = require('../monthly_summary/monthly_summary_service');
 const { Op } = require('sequelize');
 const BaseService = require('../../base/base_service');
 
@@ -10,6 +11,7 @@ class InstallmentService extends BaseService {
         this._installmentModel = InstallmentModel;
         this._accountModel = AccountModel;
         this._transactionService = new TransactionService();
+        this._monthlySummaryService = new MonthlySummaryService();
     }
 
     async getById(id) {
@@ -52,6 +54,17 @@ class InstallmentService extends BaseService {
             await this._installmentModel.destroy({ where: { id } });
 
             if (remainingInstallments.length === 0) {
+                // Recalcular monthly summary após exclusão da parcela
+                try {
+                    await this._monthlySummaryService.calculateMonthlySummary(
+                        account.userId,
+                        installmentToDelete.referenceMonth,
+                        installmentToDelete.referenceYear,
+                        true // forceRecalculate
+                    );
+                } catch (summaryError) {
+                    console.warn('Erro ao recalcular monthly summary após exclusão de parcela:', summaryError.message);
+                }
                 return true;
             }
 
@@ -62,6 +75,18 @@ class InstallmentService extends BaseService {
                 installment.number = i + 1;
                 installment.amount = newAmountPerInstallment;
                 await installment.save();
+            }
+
+            // Recalcular monthly summary após exclusão da parcela
+            try {
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    account.userId,
+                    installmentToDelete.referenceMonth,
+                    installmentToDelete.referenceYear,
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.warn('Erro ao recalcular monthly summary após exclusão de parcela:', summaryError.message);
             }
 
             return true;
@@ -202,12 +227,17 @@ class InstallmentService extends BaseService {
                 dueDate.setMonth(dueDate.getMonth() + (i - 1));
                 dueDate.setDate(dueDay);
 
+                const referenceMonth = dueDate.getMonth() + 1; // getMonth() retorna 0-11, precisamos 1-12
+                const referenceYear = dueDate.getFullYear();
+
                 installmentsToCreate.push({
                     accountId,
                     number: i,
                     dueDate,
                     amount: installmentAmount,
-                    isPaid: false
+                    isPaid: false,
+                    referenceMonth,
+                    referenceYear
                 });
             }
 
@@ -244,6 +274,18 @@ class InstallmentService extends BaseService {
             const transaction = await this._transactionService.createInstallmentPayment(installment, userId);
 
             await this.markAsPaidInstance(installment);
+
+            // Recalcular monthly summary após pagamento da parcela
+            try {
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    userId,
+                    installment.referenceMonth,
+                    installment.referenceYear,
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.warn('Erro ao recalcular monthly summary após pagamento de parcela:', summaryError.message);
+            }
 
             return {
                 installment,

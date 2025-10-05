@@ -55,6 +55,26 @@ const Installment = sequelize.define(
             type: DataTypes.DATE,
             allowNull: true,
             field: 'paid_at'
+        },
+        referenceMonth: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            field: 'reference_month',
+            validate: {
+                min: 1,
+                max: 12
+            },
+            comment: 'Mês de referência para agrupamento temporal (1-12)'
+        },
+        referenceYear: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            field: 'reference_year',
+            validate: {
+                min: 2020,
+                max: 2100
+            },
+            comment: 'Ano de referência para agrupamento temporal'
         }
     },
     {
@@ -79,6 +99,12 @@ const Installment = sequelize.define(
             {
                 unique: true,
                 fields: ['account_id', 'number']
+            },
+            {
+                fields: ['reference_year', 'reference_month']
+            },
+            {
+                fields: ['account_id', 'reference_year', 'reference_month']
             }
         ],
         hooks: {

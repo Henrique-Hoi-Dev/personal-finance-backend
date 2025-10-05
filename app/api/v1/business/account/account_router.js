@@ -79,4 +79,66 @@ router.delete(
     installmentController.delete.bind(installmentController)
 );
 
+// ===== DASHBOARD ROUTES =====
+
+// ========================================
+// DASHBOARD & RELATÓRIOS
+// ========================================
+
+// Dashboard principal - dados completos
+router.get(
+    '/dashboard/all',
+    ensureAuthorization,
+    verifyToken,
+    accountController.getDashboardData.bind(accountController)
+);
+
+// Comparativo mensal
+router.get(
+    '/reports/monthly-summary',
+    ensureAuthorization,
+    verifyToken,
+    accountController.getMonthlyComparison.bind(accountController)
+);
+
+// ========================================
+// CONSULTAS POR PERÍODO
+// ========================================
+
+// Contas por período
+router.get(
+    '/period/accounts',
+    ensureAuthorization,
+    verifyToken,
+    accountController.getAccountsByPeriod.bind(accountController)
+);
+
+// Contas a pagar por período
+router.get(
+    '/period/unpaid-accounts',
+    ensureAuthorization,
+    verifyToken,
+    accountController.getUnpaidAccountsByPeriod.bind(accountController)
+);
+
+// Estatísticas do período
+router.get(
+    '/period/statistics',
+    ensureAuthorization,
+    verifyToken,
+    accountController.getPeriodStatistics.bind(accountController)
+);
+
+// ========================================
+// GESTÃO TEMPORAL
+// ========================================
+
+// Atualizar referência temporal de uma conta
+router.put(
+    '/:id/temporal-reference',
+    ensureAuthorization,
+    verifyToken,
+    accountController.updateTemporalReference.bind(accountController)
+);
+
 module.exports = router;

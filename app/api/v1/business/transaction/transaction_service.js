@@ -4,6 +4,7 @@ const CategoryValidator = require('./category_validator');
 const AccountModel = require('../account/account_model');
 const UserModel = require('../user/user_model');
 const InstallmentModel = require('../installment/installment_model');
+const MonthlySummaryService = require('../monthly_summary/monthly_summary_service');
 const { Op } = require('sequelize');
 const { getCategoryColor } = require('../../../../utils/enums');
 
@@ -15,12 +16,42 @@ class TransactionService extends BaseService {
         this._userModel = UserModel;
         this._categoryValidator = CategoryValidator;
         this._installmentModel = InstallmentModel;
+        this._monthlySummaryService = new MonthlySummaryService();
     }
 
     async delete(id) {
         try {
-            return await this._transactionModel.destroy({ where: { id } });
+            // Buscar a transação antes de deletar para obter os dados necessários
+            const transaction = await this._transactionModel.findByPk(id);
+            if (!transaction) {
+                throw new Error('TRANSACTION_NOT_FOUND');
+            }
+
+            const userId = transaction.userId;
+            const transactionDate = new Date(transaction.date);
+            const month = transactionDate.getMonth() + 1;
+            const year = transactionDate.getFullYear();
+
+            // Deletar a transação
+            const result = await this._transactionModel.destroy({ where: { id } });
+
+            // Atualizar monthly summary automaticamente
+            try {
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    userId,
+                    month,
+                    year,
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.warn('Erro ao atualizar monthly summary após exclusão:', summaryError.message);
+            }
+
+            return result;
         } catch (error) {
+            if (error.message === 'TRANSACTION_NOT_FOUND') {
+                throw error;
+            }
             throw new Error('TRANSACTION_DELETION_ERROR');
         }
     }
@@ -213,7 +244,7 @@ class TransactionService extends BaseService {
                 await this._categoryValidator.validateCategoryExists(category, 'INCOME');
             }
 
-            return await this._transactionModel.create({
+            const transaction = await this._transactionModel.create({
                 userId,
                 accountId,
                 installmentId: null,
@@ -223,6 +254,21 @@ class TransactionService extends BaseService {
                 value,
                 date: date || new Date()
             });
+
+            // Atualizar monthly summary automaticamente
+            try {
+                const transactionDate = new Date(transaction.date);
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    userId,
+                    transactionDate.getMonth() + 1,
+                    transactionDate.getFullYear(),
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.warn('Erro ao atualizar monthly summary:', summaryError.message);
+            }
+
+            return transaction;
         } catch (error) {
             if (error.message === 'CATEGORY_NOT_FOUND' || error.message === 'CATEGORY_TYPE_MISMATCH') {
                 throw error;
@@ -247,7 +293,7 @@ class TransactionService extends BaseService {
                 await this._validateAccountPayment(accountId, value, userId);
             }
 
-            return await this._transactionModel.create({
+            const transaction = await this._transactionModel.create({
                 userId,
                 accountId,
                 installmentId: null,
@@ -257,6 +303,21 @@ class TransactionService extends BaseService {
                 value,
                 date: date || new Date()
             });
+
+            // Atualizar monthly summary automaticamente
+            try {
+                const transactionDate = new Date(transaction.date);
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    userId,
+                    transactionDate.getMonth() + 1,
+                    transactionDate.getFullYear(),
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.warn('Erro ao atualizar monthly summary:', summaryError.message);
+            }
+
+            return transaction;
         } catch (error) {
             if (error.message === 'CATEGORY_NOT_FOUND' || error.message === 'CATEGORY_TYPE_MISMATCH') {
                 throw error;

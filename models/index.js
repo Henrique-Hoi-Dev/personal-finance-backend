@@ -3,6 +3,7 @@ const UserModel = require('../app/api/v1/business/user/user_model');
 const Account = require('../app/api/v1/business/account/account_model');
 const Transaction = require('../app/api/v1/business/transaction/transaction_model');
 const Installment = require('../app/api/v1/business/installment/installment_model');
+const MonthlySummary = require('../app/api/v1/business/monthly_summary/monthly_summary_model');
 
 // Define associations
 UserModel.hasMany(Account, {
@@ -61,6 +62,18 @@ Installment.hasMany(Transaction, {
     onDelete: 'SET NULL'
 });
 
+// MonthlySummary associations
+UserModel.hasMany(MonthlySummary, {
+    foreignKey: 'userId',
+    as: 'monthlySummaries',
+    onDelete: 'CASCADE'
+});
+
+MonthlySummary.belongsTo(UserModel, {
+    foreignKey: 'userId',
+    as: 'user'
+});
+
 // Sync models with database
 const syncModels = async () => {
     try {
@@ -77,5 +90,6 @@ module.exports = {
     Account,
     Transaction,
     Installment,
+    MonthlySummary,
     syncModels
 };

@@ -154,6 +154,26 @@ const Account = sequelize.define(
             defaultValue: false,
             field: 'is_preview',
             comment: 'Indica se é uma prévia de gasto (ex: água, luz que variam)'
+        },
+        referenceMonth: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            field: 'reference_month',
+            validate: {
+                min: 1,
+                max: 12
+            },
+            comment: 'Mês de referência para agrupamento temporal (1-12)'
+        },
+        referenceYear: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            field: 'reference_year',
+            validate: {
+                min: 2020,
+                max: 2100
+            },
+            comment: 'Ano de referência para agrupamento temporal'
         }
     },
     {
@@ -174,6 +194,12 @@ const Account = sequelize.define(
             },
             {
                 fields: ['due_day']
+            },
+            {
+                fields: ['reference_year', 'reference_month']
+            },
+            {
+                fields: ['user_id', 'reference_year', 'reference_month']
             }
         ]
     }
