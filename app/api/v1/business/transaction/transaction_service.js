@@ -32,6 +32,47 @@ class TransactionService extends BaseService {
             const month = transactionDate.getMonth() + 1;
             const year = transactionDate.getFullYear();
 
+            // Se a transação está vinculada a uma parcela, reverter o status da parcela
+            if (transaction.installmentId) {
+                const installment = await this._installmentModel.findByPk(transaction.installmentId);
+                if (installment) {
+                    installment.isPaid = false;
+                    installment.paidAt = null;
+                    await installment.save();
+                }
+            }
+
+            // Se a transação está vinculada a uma conta, verificar se deve reverter o status da conta
+            if (transaction.accountId) {
+                const account = await this._accountModel.findByPk(transaction.accountId);
+                if (account && account.isPaid) {
+                    // Verificar se a conta tem parcelas
+                    const totalInstallments = await this._installmentModel.count({
+                        where: { accountId: transaction.accountId }
+                    });
+
+                    if (totalInstallments > 0) {
+                        // Conta COM parcelas: verificar se ainda existem parcelas não pagas
+                        const unpaidInstallments = await this._installmentModel.count({
+                            where: {
+                                accountId: transaction.accountId,
+                                isPaid: false
+                            }
+                        });
+
+                        // Se há parcelas não pagas, reverter o status da conta
+                        if (unpaidInstallments > 0) {
+                            account.isPaid = false;
+                            await account.save();
+                        }
+                    } else {
+                        // Conta SEM parcelas: sempre reverter o status quando transação for excluída
+                        account.isPaid = false;
+                        await account.save();
+                    }
+                }
+            }
+
             // Deletar a transação
             const result = await this._transactionModel.destroy({ where: { id } });
 
@@ -343,7 +384,7 @@ class TransactionService extends BaseService {
                 throw new Error('INSTALLMENT_ALREADY_PAID');
             }
 
-            return await this._transactionModel.create({
+            const transaction = await this._transactionModel.create({
                 userId,
                 accountId: installment.accountId,
                 installmentId: installment.id,
@@ -351,8 +392,22 @@ class TransactionService extends BaseService {
                 category: 'INSTALLMENT_PAYMENT',
                 description: `Pagamento da parcela ${installment.number}`,
                 value: installment.amount,
-                date: new Date()
+                date: installment.dueDate // Usar a data de vencimento da parcela
             });
+
+            try {
+                const transactionDate = new Date(transaction.date);
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    userId,
+                    transactionDate.getMonth() + 1,
+                    transactionDate.getFullYear(),
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.warn('Erro ao atualizar monthly summary após pagamento de parcela:', summaryError.message);
+            }
+
+            return transaction;
         } catch (error) {
             throw new Error('INSTALLMENT_PAYMENT_ERROR');
         }
@@ -366,10 +421,8 @@ class TransactionService extends BaseService {
                 throw new Error('TRANSACTION_NOT_FOUND');
             }
 
-            if (transaction.installmentId) {
-                throw new Error('CANNOT_DELETE_INSTALLMENT_TRANSACTION');
-            }
-
+            // Agora permitimos exclusão de transações de parcelas
+            // O status da parcela/conta será revertido automaticamente no método delete
             return true;
         } catch (error) {
             throw new Error('TRANSACTION_DELETION_ERROR');
@@ -534,6 +587,14 @@ class TransactionService extends BaseService {
      */
     async createAccountPayment(account, userId, paymentAmount) {
         try {
+            let transactionDate;
+            if (account.referenceMonth && account.referenceYear) {
+                // referenceMonth é 1-12, mas Date() usa 0-11, então subtraímos 1
+                transactionDate = new Date(account.referenceYear, account.referenceMonth - 1, 1);
+            } else {
+                transactionDate = account.startDate;
+            }
+
             const transactionData = {
                 userId,
                 accountId: account.id,
@@ -541,10 +602,35 @@ class TransactionService extends BaseService {
                 category: 'ACCOUNT_PAYMENT',
                 description: `Pagamento da conta: ${account.name}`,
                 value: paymentAmount,
-                date: new Date()
+                date: transactionDate
             };
 
             const transaction = await this._transactionModel.create(transactionData);
+
+            try {
+                // Usar diretamente o referenceMonth/referenceYear da conta em vez de extrair da data
+                let month, year;
+                if (account.referenceMonth && account.referenceYear) {
+                    month = account.referenceMonth;
+                    year = account.referenceYear;
+                } else {
+                    // Fallback: extrair da data da transação
+                    const transactionDate = new Date(transaction.date);
+                    month = transactionDate.getMonth() + 1;
+                    year = transactionDate.getFullYear();
+                }
+
+                await this._monthlySummaryService.calculateMonthlySummary(
+                    userId,
+                    month,
+                    year,
+                    true // forceRecalculate
+                );
+            } catch (summaryError) {
+                console.error('Erro ao atualizar monthly summary após pagamento de conta:', summaryError.message);
+                console.error('Stack trace:', summaryError.stack);
+            }
+
             return transaction;
         } catch (error) {
             throw new Error('TRANSACTION_CREATION_ERROR');

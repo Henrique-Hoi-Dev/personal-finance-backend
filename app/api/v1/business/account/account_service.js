@@ -87,6 +87,25 @@ class AccountService extends BaseService {
                 throw new Error('ACCOUNT_NOT_FOUND');
             }
 
+            // Buscar todas as parcelas da conta
+            const installments = await this._installmentModel.findAll({
+                where: { accountId: id }
+            });
+
+            // Excluir transações de pagamento das parcelas
+            if (installments.length > 0) {
+                const installmentIds = installments.map((installment) => installment.id);
+
+                // Excluir transações que têm installmentId relacionado às parcelas desta conta
+                await this._transactionService._transactionModel.destroy({
+                    where: {
+                        installmentId: {
+                            [Op.in]: installmentIds
+                        }
+                    }
+                });
+            }
+
             const result = await this._accountModel.destroy({ where: { id } });
 
             try {
@@ -122,12 +141,11 @@ class AccountService extends BaseService {
                 accountData.referenceYear = startDate.getFullYear();
             }
 
-            console.log('accountData', accountData);
-
             const account = await this._accountModel.create(accountData);
 
-            if (account.installments && account.installments > 0) {
-                const amountToUse = account.type === 'LOAN' ? account.totalWithInterest : account.totalAmount;
+            if (accountData.installments && accountData.installments > 0) {
+                const amountToUse =
+                    accountData.type === 'LOAN' ? accountData.totalWithInterest : accountData.totalAmount;
 
                 if (amountToUse) {
                     await this._installmentService.createInstallments(
@@ -141,7 +159,7 @@ class AccountService extends BaseService {
             }
 
             try {
-                if (account.installments && account.installments > 0) {
+                if (accountData.installments && accountData.installments > 0) {
                     await this._monthlySummaryService.generateSummariesForAccount(accountData.userId, account.id);
                 } else {
                     await this._monthlySummaryService.calculateMonthlySummary(
@@ -459,7 +477,6 @@ class AccountService extends BaseService {
 
             return parsed;
         } catch (error) {
-            console.log('error', error);
             throw new Error('ACCOUNT_LIST_ERROR');
         }
     }

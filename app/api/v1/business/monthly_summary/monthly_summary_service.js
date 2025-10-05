@@ -58,7 +58,6 @@ class MonthlySummaryService extends BaseService {
                     status: summaryData.status,
                     lastCalculatedAt: new Date()
                 });
-                console.log('Summary atualizado');
             } else {
                 // Criar novo summary
                 summary = await this._monthlySummaryModel.create({
@@ -73,10 +72,8 @@ class MonthlySummaryService extends BaseService {
                     status: summaryData.status,
                     lastCalculatedAt: new Date()
                 });
-                console.log('Novo summary criado');
             }
 
-            console.log('Monthly summary salvo:', summary.toJSON());
             return summary;
         } catch (error) {
             throw new Error('MONTHLY_SUMMARY_CALCULATION_ERROR');
@@ -189,8 +186,8 @@ class MonthlySummaryService extends BaseService {
             .filter((t) => t.type === 'EXPENSE')
             .reduce((sum, t) => sum + (t.value || 0), 0);
 
-        // Buscar contas que têm parcelas no mês/ano especificado
-        const accounts = await this._accountModel.findAll({
+        // Buscar contas que têm parcelas no mês/ano especificado OU contas sem parcelas com referência no mês/ano
+        const accountsWithInstallments = await this._accountModel.findAll({
             where: {
                 userId
             },
@@ -208,25 +205,46 @@ class MonthlySummaryService extends BaseService {
             ]
         });
 
-        // Calcular contas a pagar baseado nas parcelas não pagas do mês
+        // Buscar contas sem parcelas que têm referência no mês/ano especificado
+        const accountsWithoutInstallments = await this._accountModel.findAll({
+            where: {
+                userId,
+                referenceMonth: month,
+                referenceYear: year,
+                installments: null // Contas sem parcelas
+            }
+        });
+
+        // Combinar ambas as listas
+        const accounts = [...accountsWithInstallments, ...accountsWithoutInstallments];
+
+        // Calcular contas a pagar baseado nas parcelas não pagas do mês E contas sem parcelas não pagas
         const billsToPay = accounts.reduce((sum, account) => {
             if (account.installmentList && account.installmentList.length > 0) {
-                // Somar apenas parcelas não pagas do mês específico
+                // Conta COM parcelas: somar apenas parcelas não pagas do mês específico
                 const unpaidInstallments = account.installmentList.filter((installment) => !installment.isPaid);
                 const installmentAmount = unpaidInstallments.reduce((total, installment) => {
                     return total + (installment.amount || 0);
                 }, 0);
                 return sum + installmentAmount;
+            } else {
+                // Conta SEM parcelas: somar o valor total se não estiver paga
+                if (!account.isPaid && account.totalAmount) {
+                    return sum + account.totalAmount;
+                }
             }
             return sum;
         }, 0);
 
-        // Contar contas que têm parcelas não pagas no mês
+        // Contar contas que têm parcelas não pagas no mês OU contas sem parcelas não pagas
         const billsCount = accounts.filter((account) => {
             if (account.installmentList && account.installmentList.length > 0) {
+                // Conta COM parcelas: verificar se tem parcelas não pagas
                 return account.installmentList.some((installment) => !installment.isPaid);
+            } else {
+                // Conta SEM parcelas: verificar se não está paga
+                return !account.isPaid;
             }
-            return false;
         }).length;
 
         const totalBalance = totalIncome - totalExpenses;
@@ -330,9 +348,6 @@ class MonthlySummaryService extends BaseService {
      */
     async generateSummariesForAccount(userId, accountId) {
         try {
-            console.log(`Iniciando geração de resumos para conta ${accountId} do usuário ${userId}`);
-
-            // Buscar todas as parcelas da conta
             const installments = await this._installmentModel.findAll({
                 where: { accountId },
                 order: [
@@ -340,19 +355,6 @@ class MonthlySummaryService extends BaseService {
                     ['referenceMonth', 'ASC']
                 ]
             });
-
-            console.log(`Encontradas ${installments.length} parcelas para a conta`);
-            console.log(
-                'Parcelas encontradas:',
-                installments.map((i) => ({
-                    id: i.id,
-                    number: i.number,
-                    referenceMonth: i.referenceMonth,
-                    referenceYear: i.referenceYear,
-                    amount: i.amount,
-                    isPaid: i.isPaid
-                }))
-            );
 
             if (installments.length === 0) {
                 return {
@@ -373,28 +375,22 @@ class MonthlySummaryService extends BaseService {
                 }
             });
 
-            console.log('Grupos de mês/ano encontrados:', monthYearGroups);
-
             let generated = 0;
             const summaries = [];
 
             // Gerar resumo para cada mês/ano que tem parcelas
             for (const key in monthYearGroups) {
                 const { month, year } = monthYearGroups[key];
-                console.log(`Gerando resumo para ${month}/${year}...`);
 
                 try {
                     const summary = await this.calculateMonthlySummary(userId, month, year, true);
                     summaries.push(summary);
                     generated++;
-                    console.log(`Resumo gerado com sucesso para ${month}/${year}`);
                 } catch (error) {
                     console.error(`Erro ao gerar resumo para ${month}/${year}:`, error.message);
                     console.error('Stack trace:', error.stack);
                 }
             }
-
-            console.log(`Geração concluída. ${generated} resumos gerados com sucesso`);
 
             return {
                 message: `${generated} resumos gerados com sucesso`,
