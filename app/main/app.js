@@ -1,6 +1,7 @@
 require('./bootstrap')();
 
 const express = require('express');
+const path = require('path');
 const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
@@ -90,6 +91,11 @@ app.use(helmet.xssFilter());
 app.use(helmet.referrerPolicy({ policy: 'strict-origin-when-cross-origin' }));
 
 app.use(cookieParser());
+
+if (process.env.AVATAR_UPLOAD_DIR) {
+    const avatarsDir = process.env.AVATAR_UPLOAD_DIR;
+    app.use('/average/avatars', express.static(avatarsDir, { maxAge: '7d', dotfiles: 'ignore' }));
+}
 
 app.use('/v1/', routers.v1);
 app.use('/', routers.v1);
