@@ -678,18 +678,36 @@ class TransactionService extends BaseService {
                 };
             }
 
+            // Buscar transações com informações da conta para agrupar por categoria da conta
             const expensesByCategory = await this._transactionModel.findAll({
                 where,
+                include: [
+                    {
+                        model: this._accountModel,
+                        as: 'account',
+                        attributes: ['type', 'name'],
+                        required: false // LEFT JOIN para incluir transações sem conta
+                    }
+                ],
                 attributes: [
                     'category',
                     [
-                        this._transactionModel.sequelize.fn('SUM', this._transactionModel.sequelize.col('value')),
+                        this._transactionModel.sequelize.fn(
+                            'SUM',
+                            this._transactionModel.sequelize.col('Transaction.value')
+                        ),
                         'totalValue'
                     ]
                 ],
-                group: ['category'],
+                group: ['Transaction.category', 'account.type', 'account.name'],
                 order: [
-                    [this._transactionModel.sequelize.fn('SUM', this._transactionModel.sequelize.col('value')), 'DESC']
+                    [
+                        this._transactionModel.sequelize.fn(
+                            'SUM',
+                            this._transactionModel.sequelize.col('Transaction.value')
+                        ),
+                        'DESC'
+                    ]
                 ],
                 raw: true
             });
@@ -707,24 +725,62 @@ class TransactionService extends BaseService {
                 }, {});
             }
 
-            const result = expensesByCategory.map((item) => {
-                const value = Number(item.totalValue);
-                const percentage = totalExpenses > 0 ? (value / totalExpenses) * 100 : 0;
-                const category = categoryInfo[item.category] || {
-                    name: item.category,
-                    pt_br: item.category,
-                    en: item.category
-                };
+            // Agrupar por categoria da conta ou categoria da transação
+            const groupedExpenses = {};
 
-                return {
-                    category: item.category,
-                    name: category.pt_br || category.name,
-                    nameEn: category.en || category.name,
-                    value: value,
-                    percentage: Math.round(percentage * 100) / 100, // Arredondar para 2 casas decimais
-                    color: getCategoryColor(item.category) // Função para definir cor da categoria
-                };
+            expensesByCategory.forEach((item) => {
+                const value = Number(item.totalValue);
+                let categoryKey, categoryName, categoryType;
+
+                // Priorizar categoria da conta se existir
+                if (item['account.type']) {
+                    categoryKey = item['account.type'];
+                    categoryName = item['account.name'] || item['account.type'];
+                    categoryType = 'account';
+                } else {
+                    // Fallback para categoria da transação
+                    categoryKey = item.category || 'OTHER';
+                    categoryName = item.category || 'Outros';
+                    categoryType = 'transaction';
+                }
+
+                if (!groupedExpenses[categoryKey]) {
+                    groupedExpenses[categoryKey] = {
+                        category: categoryKey,
+                        name: categoryName,
+                        type: categoryType,
+                        value: 0
+                    };
+                }
+
+                groupedExpenses[categoryKey].value += value;
             });
+
+            const result = Object.values(groupedExpenses)
+                .map((item) => {
+                    const percentage = totalExpenses > 0 ? (item.value / totalExpenses) * 100 : 0;
+
+                    // Mapear tipos de conta para nomes mais amigáveis
+                    const accountTypeNames = {
+                        FIXED: 'Contas Fixas',
+                        FIXED_PREVIEW: 'Contas Variáveis',
+                        LOAN: 'Empréstimos',
+                        CREDIT_CARD: 'Cartão de Crédito',
+                        SUBSCRIPTION: 'Assinaturas',
+                        OTHER: 'Outros'
+                    };
+
+                    return {
+                        category: item.category,
+                        name: item.type === 'account' ? accountTypeNames[item.category] || item.name : item.name,
+                        nameEn: item.name,
+                        value: item.value,
+                        percentage: Math.round(percentage * 100) / 100,
+                        color: getCategoryColor(item.category),
+                        type: item.type // Para identificar se é conta ou transação
+                    };
+                })
+                .sort((a, b) => b.value - a.value); // Ordenar por valor decrescente
 
             return {
                 categories: result
