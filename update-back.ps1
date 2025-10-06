@@ -10,3 +10,17 @@ docker-compose down
 docker-compose up -d
 
 Write-Host "✅ Backend atualizado e rodando!"
+
+# 4. Aguardar o container estar pronto
+Write-Host "Aguardando container estar pronto..."
+Start-Sleep -Seconds 10
+
+# 5. Executar migrations
+Write-Host "Executando migrations..."
+docker-compose exec -T app npm run migrate
+
+# 6. Executar seeds
+Write-Host "Executando seeds..."
+docker-compose exec -T app npm run seed
+
+Write-Host "🎉 Backend completamente atualizado com migrations e seeds aplicados!"
