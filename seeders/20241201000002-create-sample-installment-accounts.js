@@ -27,6 +27,9 @@ module.exports = {
                 installments: 10,
                 start_date: '2024-01-15',
                 due_day: 15,
+                is_preview: false,
+                reference_month: 1,
+                reference_year: 2024,
                 created_at: new Date(),
                 updated_at: new Date()
             },
@@ -39,6 +42,9 @@ module.exports = {
                 installments: 12,
                 start_date: '2024-02-01',
                 due_day: 10,
+                is_preview: false,
+                reference_month: 2,
+                reference_year: 2024,
                 created_at: new Date(),
                 updated_at: new Date()
             },
@@ -46,9 +52,12 @@ module.exports = {
                 id: crypto.randomUUID(),
                 user_id: adminUserId,
                 name: 'Energia Elétrica',
-                type: 'FIXED',
+                type: 'FIXED_PREVIEW',
                 start_date: '2024-01-01',
                 due_day: 10,
+                is_preview: true,
+                reference_month: 1,
+                reference_year: 2024,
                 created_at: new Date(),
                 updated_at: new Date()
             },
@@ -61,6 +70,9 @@ module.exports = {
                 installments: 1,
                 start_date: '2024-01-01',
                 due_day: 1,
+                is_preview: false,
+                reference_month: 1,
+                reference_year: 2024,
                 created_at: new Date(),
                 updated_at: new Date()
             }
@@ -71,7 +83,7 @@ module.exports = {
 
         // Buscar as contas criadas para gerar as parcelas
         const [createdAccounts] = await queryInterface.sequelize.query(
-            `SELECT id, total_amount, installments, start_date, due_day 
+            `SELECT id, total_amount, installments, start_date, due_day, reference_month, reference_year
              FROM accounts 
              WHERE user_id = '${adminUserId}' 
              AND installments > 0`
@@ -87,6 +99,12 @@ module.exports = {
                 dueDate.setMonth(dueDate.getMonth() + (i - 1));
                 dueDate.setDate(account.due_day);
 
+                // Calcular mês e ano de referência para cada parcela
+                const installmentDate = new Date(account.start_date);
+                installmentDate.setMonth(installmentDate.getMonth() + (i - 1));
+                const installmentMonth = installmentDate.getMonth() + 1; // getMonth() retorna 0-11
+                const installmentYear = installmentDate.getFullYear();
+
                 installments.push({
                     id: crypto.randomUUID(),
                     account_id: account.id,
@@ -95,6 +113,8 @@ module.exports = {
                     amount: installmentAmount,
                     is_paid: false,
                     paid_at: null,
+                    reference_month: installmentMonth,
+                    reference_year: installmentYear,
                     created_at: new Date(),
                     updated_at: new Date()
                 });

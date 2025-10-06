@@ -38,11 +38,12 @@ module.exports = {
                 allowNull: false
             },
             amount: {
-                type: Sequelize.DECIMAL(10, 2),
+                type: Sequelize.BIGINT,
                 allowNull: false,
                 validate: {
-                    min: 0.01
-                }
+                    min: 1 // Mínimo de 1 centavo
+                },
+                comment: 'Valor em centavos (BIGINT)'
             },
             is_paid: {
                 type: Sequelize.BOOLEAN,
@@ -52,6 +53,24 @@ module.exports = {
             paid_at: {
                 type: Sequelize.DATE,
                 allowNull: true
+            },
+            reference_month: {
+                type: Sequelize.INTEGER,
+                allowNull: true,
+                validate: {
+                    min: 1,
+                    max: 12
+                },
+                comment: 'Mês de referência para agrupamento temporal (1-12)'
+            },
+            reference_year: {
+                type: Sequelize.INTEGER,
+                allowNull: true,
+                validate: {
+                    min: 2020,
+                    max: 2100
+                },
+                comment: 'Ano de referência para agrupamento temporal'
             },
             created_at: {
                 type: Sequelize.DATE,
@@ -77,6 +96,10 @@ module.exports = {
             unique: true,
             name: 'installments_account_number_unique'
         });
+
+        // Indexes for reference fields (temporal grouping)
+        await queryInterface.addIndex('installments', ['reference_year', 'reference_month']);
+        await queryInterface.addIndex('installments', ['account_id', 'reference_year', 'reference_month']);
     },
 
     down: async (queryInterface, Sequelize) => {
