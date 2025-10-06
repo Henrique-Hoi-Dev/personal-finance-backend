@@ -165,16 +165,17 @@ npm start    # Produção
 
 ```env
 NODE_ENV=development
-PORT_SERVER=3000
+PORT=3000
 DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=henrique_store
+DB_PORT=5433
+DB_NAME=finance
 DB_USER=postgres
 DB_PASS=postgres
 DB_DIALECT=postgres
-JWT_SECRET=your-secret-key
+DB_LOGGING=false
+ALLOWED_ORIGINS=http://localhost:3005,http://localhost:3001,https://yourdomain.com
+JWT_SECRET=key
 JWT_EXPIRES_IN=1h
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:3001
 ```
 
 ## 🧪 **Testes**
