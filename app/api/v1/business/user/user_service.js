@@ -175,6 +175,8 @@ class UserService extends BaseService {
                 await user.update(updates);
             }
 
+            const avatar = await this._userAvatarModel.findOne({ where: { user_id: user.id } });
+
             return {
                 id: user.id,
                 name: user.name,
@@ -184,7 +186,8 @@ class UserService extends BaseService {
                 email_verified: user.email_verified,
                 last_login: user.last_login,
                 default_currency: user.default_currency,
-                preferred_language: user.preferred_language
+                preferred_language: user.preferred_language,
+                avatar_id: avatar.id
             };
         } catch (error) {
             if (error.message === 'USER_NOT_FOUND' || error.message === 'USER_FETCH_ERROR') {
