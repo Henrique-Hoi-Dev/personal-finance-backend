@@ -33,13 +33,16 @@ services:
             TZ: 'America/Sao_Paulo'
             JWT_SECRET: 'b1e4ef6b1f799606b5bcfe1dee11ef4471a8e62cf5699a50e6737a15d2a6ebb44dafdc1f44b5f38ad1a9621eea444d86f24497d63f438d705267c0c8b150d06f'
             JWT_EXPIRES_IN: '1h'
-            ALLOWED_ORIGINS: 'http://localhost:3005,http://localhost:8081,https://yourdomain.com'
-            AVATAR_UPLOAD_DIR: "E:\avatar"
+            ALLOWED_ORIGINS: 'http://localhost:3005,http://localhost:8081,https://app.henriquehoinacki.dev'
+            AVATAR_UPLOAD_DIR: '/app/uploads/avatars'
             AVATAR_MAX_SIZE_MB: 5
             AVATAR_PUBLIC_BASE_PATH: '/average/avatars'
         ports:
             - '8081:8081'
+        volumes:
+            - avatar_uploads:/app/uploads/avatars
         command: ['node', 'server.js']
 
 volumes:
     postgres_data:
+    avatar_uploads:

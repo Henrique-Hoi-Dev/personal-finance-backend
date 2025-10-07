@@ -14,8 +14,8 @@ RUN npm ci --only=production && npm cache clean --force
 # Copiar código fonte
 COPY . .
 
-# Criar diretório para logs
-RUN mkdir -p /app/logs && chown -R nodejs:nodejs /app
+# Criar diretórios para logs e uploads
+RUN mkdir -p /app/logs /app/uploads/avatars && chown -R nodejs:nodejs /app
 
 # Mudar para usuário não-root
 USER nodejs
