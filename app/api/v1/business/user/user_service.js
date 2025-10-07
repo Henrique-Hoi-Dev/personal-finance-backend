@@ -6,6 +6,7 @@ const UserAvatar = require('./user_avatar_model');
 const path = require('path');
 const fs = require('fs');
 const UserAvatarModel = require('./user_avatar_model');
+const { validatePasswordStrength } = require('../../../../utils/password-validator');
 class UserService extends BaseService {
     constructor() {
         super();
@@ -54,6 +55,42 @@ class UserService extends BaseService {
             return isValid;
         } catch (error) {
             throw new Error('PASSWORD_VALIDATION_ERROR');
+        }
+    }
+
+    async createWithHash(userData) {
+        try {
+            const { password, ...userDataWithoutPassword } = userData;
+
+            if (!password) {
+                throw new Error('Password is required for user creation');
+            }
+
+            // Validate password strength
+            const passwordValidation = validatePasswordStrength({ password });
+            if (!passwordValidation.isValid) {
+                throw new Error('Password does not meet security requirements');
+            }
+
+            // Hash the password
+            const saltRounds = 8;
+            const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+            // Create user with hashed password
+            const user = await this._userModel.create({
+                ...userDataWithoutPassword,
+                hash_password: hashedPassword
+            });
+
+            return user;
+        } catch (error) {
+            if (
+                error.message === 'Password is required for user creation' ||
+                error.message === 'Password does not meet security requirements'
+            ) {
+                throw error;
+            }
+            throw new Error('USER_CREATION_ERROR');
         }
     }
 
