@@ -6,12 +6,12 @@ module.exports = {
 
         try {
             // 1. Verificar quantas contas FIXED_PREVIEW existem
-            const [fixedPreviewAccounts] = await queryInterface.sequelize.query(
+            const fixedPreviewAccounts = await queryInterface.sequelize.query(
                 `SELECT COUNT(*) as count FROM accounts WHERE type = 'FIXED_PREVIEW'`,
                 { type: queryInterface.sequelize.QueryTypes.SELECT }
             );
 
-            const count = fixedPreviewAccounts[0].count;
+            const count = fixedPreviewAccounts && fixedPreviewAccounts[0] ? fixedPreviewAccounts[0].count : 0;
             console.log(`📊 Encontradas ${count} contas com tipo FIXED_PREVIEW`);
 
             if (count > 0) {
@@ -25,12 +25,14 @@ module.exports = {
                 console.log(`✅ ${updatedRows} contas migradas de FIXED_PREVIEW para FIXED com isPreview=true`);
 
                 // 3. Verificar se a migração foi bem-sucedida
-                const [remainingFixedPreview] = await queryInterface.sequelize.query(
+                const remainingFixedPreview = await queryInterface.sequelize.query(
                     `SELECT COUNT(*) as count FROM accounts WHERE type = 'FIXED_PREVIEW'`,
                     { type: queryInterface.sequelize.QueryTypes.SELECT }
                 );
 
-                if (remainingFixedPreview[0].count === 0) {
+                const remainingCount =
+                    remainingFixedPreview && remainingFixedPreview[0] ? remainingFixedPreview[0].count : 0;
+                if (remainingCount === 0) {
                     console.log('✅ Migração concluída com sucesso! Todas as contas FIXED_PREVIEW foram convertidas.');
                 } else {
                     console.log('⚠️  Ainda existem contas com tipo FIXED_PREVIEW. Verificar manualmente.');
@@ -49,12 +51,12 @@ module.exports = {
 
         try {
             // 1. Verificar quantas contas FIXED com isPreview=true existem
-            const [fixedPreviewAccounts] = await queryInterface.sequelize.query(
+            const fixedPreviewAccounts = await queryInterface.sequelize.query(
                 `SELECT COUNT(*) as count FROM accounts WHERE type = 'FIXED' AND is_preview = true`,
                 { type: queryInterface.sequelize.QueryTypes.SELECT }
             );
 
-            const count = fixedPreviewAccounts[0].count;
+            const count = fixedPreviewAccounts && fixedPreviewAccounts[0] ? fixedPreviewAccounts[0].count : 0;
             console.log(`📊 Encontradas ${count} contas FIXED com isPreview=true`);
 
             if (count > 0) {
