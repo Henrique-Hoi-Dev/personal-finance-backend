@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const UserAvatarModel = require('./user_avatar_model');
 const { validatePasswordStrength } = require('../../../../utils/password-validator');
+
 class UserService extends BaseService {
     constructor() {
         super();
