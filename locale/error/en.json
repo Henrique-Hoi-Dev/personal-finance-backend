@@ -19,6 +19,7 @@
     "EMAIL_ALREADY_EXISTS": "Email already exists",
     "CPF_ALREADY_EXISTS": "CPF already exists",
     "INVALID_CPF_FORMAT": "Invalid CPF format. Use: 123.456.789-00 or 12345678900",
+    "INVALID_CPF": "Invalid CPF. Please provide a valid CPF number.",
     "PASSWORD_RESET_TOKEN_EXPIRED": "Password reset token expired",
     "PASSWORD_RESET_TOKEN_INVALID": "Password reset token invalid",
     "PASSWORD_RESET_TOKEN_USED": "Password reset token used",

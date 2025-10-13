@@ -1,4 +1,5 @@
 const { Joi } = require('express-validation');
+const { isValidCPF } = require('../../../../utils/data-cleaner');
 
 module.exports = {
     register: {
@@ -11,8 +12,7 @@ module.exports = {
                 .required()
                 .custom((value, helpers) => {
                     if (!value) return helpers.error('any.required');
-                    const cleaned = value.replace(/\D/g, '');
-                    if (cleaned.length !== 11) {
+                    if (!isValidCPF(value)) {
                         return helpers.error('any.invalid');
                     }
                     return value;
