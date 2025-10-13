@@ -699,7 +699,7 @@ class TransactionService extends BaseService {
                         'totalValue'
                     ]
                 ],
-                group: ['Transaction.category', 'account.type', 'account.name', 'account.isPreview'],
+                group: ['Transaction.category', 'account.type', 'account.name', 'account.is_preview'],
                 order: [
                     [
                         this._transactionModel.sequelize.fn(
@@ -735,7 +735,7 @@ class TransactionService extends BaseService {
                 // Priorizar categoria da conta se existir
                 if (item['account.type']) {
                     // Distinguir entre contas fixas normais e variáveis (preview)
-                    if (item['account.type'] === 'FIXED' && item['account.isPreview']) {
+                    if (item['account.type'] === 'FIXED' && item['account.is_preview']) {
                         categoryKey = 'FIXED_PREVIEW';
                         categoryName = 'Contas Variáveis';
                     } else {
@@ -792,6 +792,7 @@ class TransactionService extends BaseService {
                 categories: result
             };
         } catch (error) {
+            console.error('Erro ao buscar gastos por categoria:', error);
             throw new Error('EXPENSES_BY_CATEGORY_ERROR');
         }
     }
