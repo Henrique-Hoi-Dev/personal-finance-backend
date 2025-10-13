@@ -52,7 +52,7 @@ module.exports = {
                 id: crypto.randomUUID(),
                 user_id: adminUserId,
                 name: 'Energia Elétrica',
-                type: 'FIXED_PREVIEW',
+                type: 'FIXED',
                 start_date: '2024-01-01',
                 due_day: 10,
                 is_preview: true,

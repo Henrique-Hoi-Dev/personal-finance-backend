@@ -59,6 +59,7 @@ class AccountController extends BaseController {
         }
     }
 
+
     async getInstallments(req, res, next) {
         try {
             const { id } = req.params;
