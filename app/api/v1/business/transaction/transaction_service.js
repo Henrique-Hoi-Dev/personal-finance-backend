@@ -236,16 +236,16 @@ class TransactionService extends BaseService {
 
             const fixedSum = fixedAccounts.reduce((acc, item) => {
                 if (item.installments && item.installments > 0) {
-                    return acc + item.totalAmount / item.installments;
+                    return acc + Math.round(item.totalAmount / item.installments);
                 }
                 return acc + item.totalAmount;
             }, 0);
 
             const fixedPreviewSum = await this._accountModel.sum('totalAmount', {
-                where: { userId, type: 'FIXED_PREVIEW' }
+                where: { userId, type: 'FIXED', isPreview: true }
             });
 
-            const fixedAccountsTotal = (fixedSum || 0) + (fixedPreviewSum || 0);
+            const fixedAccountsTotal = Math.round((fixedSum || 0) + (fixedPreviewSum || 0));
 
             const totalExpensesValue = Number(totalExpenses || 0);
             const linkedExpensesValue = Number(linkedExpenses || 0);
@@ -685,7 +685,7 @@ class TransactionService extends BaseService {
                     {
                         model: this._accountModel,
                         as: 'account',
-                        attributes: ['type', 'name'],
+                        attributes: ['type', 'name', 'isPreview'],
                         required: false // LEFT JOIN para incluir transações sem conta
                     }
                 ],
@@ -699,7 +699,7 @@ class TransactionService extends BaseService {
                         'totalValue'
                     ]
                 ],
-                group: ['Transaction.category', 'account.type', 'account.name'],
+                group: ['Transaction.category', 'account.type', 'account.name', 'account.isPreview'],
                 order: [
                     [
                         this._transactionModel.sequelize.fn(
@@ -734,8 +734,14 @@ class TransactionService extends BaseService {
 
                 // Priorizar categoria da conta se existir
                 if (item['account.type']) {
-                    categoryKey = item['account.type'];
-                    categoryName = item['account.name'] || item['account.type'];
+                    // Distinguir entre contas fixas normais e variáveis (preview)
+                    if (item['account.type'] === 'FIXED' && item['account.isPreview']) {
+                        categoryKey = 'FIXED_PREVIEW';
+                        categoryName = 'Contas Variáveis';
+                    } else {
+                        categoryKey = item['account.type'];
+                        categoryName = item['account.name'] || item['account.type'];
+                    }
                     categoryType = 'account';
                 } else {
                     // Fallback para categoria da transação

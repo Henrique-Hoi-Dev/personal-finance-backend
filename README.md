@@ -14,7 +14,7 @@ relatórios.
 
 ### 💰 **Gestão de Contas**
 
-- ✅ **6 Tipos de Conta**: FIXED, FIXED_PREVIEW, LOAN, CREDIT_CARD, SUBSCRIPTION, OTHER
+- ✅ **5 Tipos de Conta**: FIXED, LOAN, CREDIT_CARD, SUBSCRIPTION, OTHER
 - ✅ Criação automática de parcelas
 - ✅ Cálculo automático de juros para empréstimos
 - ✅ Gestão temporal com referência mensal/anual
@@ -251,8 +251,7 @@ Authorization: Bearer <token>
 
 ### **Tipos de Conta**
 
-- **FIXED**: Contas fixas (água, luz, internet)
-- **FIXED_PREVIEW**: Contas variáveis (estimativa)
+- **FIXED**: Contas fixas (água, luz, internet) - pode ser marcada como preview para contas variáveis (usando campo `isPreview`)
 - **LOAN**: Empréstimos e financiamentos
 - **CREDIT_CARD**: Cartão de crédito
 - **SUBSCRIPTION**: Assinaturas recorrentes
