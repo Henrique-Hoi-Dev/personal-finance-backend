@@ -236,7 +236,7 @@ class TransactionService extends BaseService {
 
             const fixedSum = fixedAccounts.reduce((acc, item) => {
                 if (item.installments && item.installments > 0) {
-                    return acc + item.totalAmount / item.installments;
+                    return acc + Math.round(item.totalAmount / item.installments);
                 }
                 return acc + item.totalAmount;
             }, 0);
@@ -245,7 +245,7 @@ class TransactionService extends BaseService {
                 where: { userId, type: 'FIXED', isPreview: true }
             });
 
-            const fixedAccountsTotal = (fixedSum || 0) + (fixedPreviewSum || 0);
+            const fixedAccountsTotal = Math.round((fixedSum || 0) + (fixedPreviewSum || 0));
 
             const totalExpensesValue = Number(totalExpenses || 0);
             const linkedExpensesValue = Number(linkedExpenses || 0);
