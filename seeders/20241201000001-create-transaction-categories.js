@@ -82,6 +82,39 @@ module.exports = {
                 en: 'Installment Payment',
                 created_at: new Date(),
                 updated_at: new Date()
+            },
+            {
+                id: crypto.randomUUID(),
+                name: 'UTILITIES',
+                description: 'Contas de luz, água, gás, internet, telefone, etc.',
+                type: 'EXPENSE',
+                is_default: true,
+                pt_br: 'Utilidades',
+                en: 'Utilities',
+                created_at: new Date(),
+                updated_at: new Date()
+            },
+            {
+                id: crypto.randomUUID(),
+                name: 'EDUCATION',
+                description: 'Cursos, livros, material escolar, mensalidades, etc.',
+                type: 'EXPENSE',
+                is_default: true,
+                pt_br: 'Educação',
+                en: 'Education',
+                created_at: new Date(),
+                updated_at: new Date()
+            },
+            {
+                id: crypto.randomUUID(),
+                name: 'SHOPPING',
+                description: 'Roupas, eletrônicos, produtos diversos, etc.',
+                type: 'EXPENSE',
+                is_default: true,
+                pt_br: 'Compras',
+                en: 'Shopping',
+                created_at: new Date(),
+                updated_at: new Date()
             }
         ];
 

@@ -235,17 +235,19 @@ class TransactionService extends BaseService {
             });
 
             const fixedSum = fixedAccounts.reduce((acc, item) => {
+                const totalAmount = Number(item.totalAmount || 0);
                 if (item.installments && item.installments > 0) {
-                    return acc + Math.round(item.totalAmount / item.installments);
+                    return acc + Math.round(totalAmount / item.installments);
                 }
-                return acc + item.totalAmount;
+                return acc + totalAmount;
             }, 0);
 
             const fixedPreviewSum = await this._accountModel.sum('totalAmount', {
                 where: { userId, type: 'FIXED', isPreview: true }
             });
 
-            const fixedAccountsTotal = Math.round((fixedSum || 0) + (fixedPreviewSum || 0));
+            const fixedPreviewSumValue = Number(fixedPreviewSum || 0);
+            const fixedAccountsTotal = Math.round(fixedSum + fixedPreviewSumValue);
 
             const totalExpensesValue = Number(totalExpenses || 0);
             const linkedExpensesValue = Number(linkedExpenses || 0);
