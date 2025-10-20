@@ -405,9 +405,9 @@ class AccountService extends BaseService {
         try {
             const { userId, type, name, isPaid, month, year } = options;
 
-            if (userId) {
-                await this.checkAndUpdateFixedAccounts(userId);
-            }
+            // if (userId) {
+            //     await this.checkAndUpdateFixedAccounts(userId);
+            // }
             const where = {
                 [Op.or]: [
                     {
@@ -591,9 +591,7 @@ class AccountService extends BaseService {
                 }
             }
 
-            account.isPaid = true;
-            account.isPreview = false;
-            await account.save();
+            await account.update({ isPaid: true, isPreview: false });
 
             const transaction = await this._transactionService.createAccountPayment(account, userId, paymentAmount);
 
