@@ -218,18 +218,17 @@ class MonthlySummaryService extends BaseService {
         // Combinar ambas as listas
         const accounts = [...accountsWithInstallments, ...accountsWithoutInstallments];
 
-        // Calcular contas a pagar baseado nas parcelas não pagas do mês E contas sem parcelas não pagas
+        // Calcular contas a pagar baseado nas parcelas do mês (independente de pagamento) e contas sem parcelas
         const billsToPay = accounts.reduce((sum, account) => {
             if (account.installmentList && account.installmentList.length > 0) {
-                // Conta COM parcelas: somar apenas parcelas não pagas do mês específico
-                const unpaidInstallments = account.installmentList.filter((installment) => !installment.isPaid);
-                const installmentAmount = unpaidInstallments.reduce((total, installment) => {
+                // Conta COM parcelas: somar todas as parcelas do mês específico
+                const installmentAmount = account.installmentList.reduce((total, installment) => {
                     return total + (installment.amount || 0);
                 }, 0);
                 return sum + installmentAmount;
             } else {
-                // Conta SEM parcelas: somar o valor total se não estiver paga
-                if (!account.isPaid && account.totalAmount) {
+                // Conta SEM parcelas: somar o valor total independentemente de estar paga
+                if (account.totalAmount) {
                     return sum + account.totalAmount;
                 }
             }
@@ -239,10 +238,8 @@ class MonthlySummaryService extends BaseService {
         // Contar contas que têm parcelas não pagas no mês OU contas sem parcelas não pagas
         const billsCount = accounts.filter((account) => {
             if (account.installmentList && account.installmentList.length > 0) {
-                // Conta COM parcelas: verificar se tem parcelas não pagas
                 return account.installmentList.some((installment) => !installment.isPaid);
             } else {
-                // Conta SEM parcelas: verificar se não está paga
                 return !account.isPaid;
             }
         }).length;
