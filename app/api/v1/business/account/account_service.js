@@ -464,16 +464,34 @@ class AccountService extends BaseService {
                 }
             });
 
-            const parsed = accounts.map((a) => {
-                const account = a.toJSON();
-                if (account.installmentList && account.installmentList.length > 0) {
-                    account.installment = account.installmentList[0];
-                } else {
-                    account.installment = null;
-                }
-                delete account.installmentList;
-                return account;
-            });
+            const parsed = await Promise.all(
+                accounts.map(async (a) => {
+                    const account = a.toJSON();
+
+                    if (account.type === 'LOAN') {
+                        const allPaidInstallments = await this._installmentModel.findAll({
+                            where: {
+                                accountId: account.id,
+                                isPaid: true
+                            },
+                            attributes: ['amount']
+                        });
+
+                        const totalPaidAmount = allPaidInstallments.reduce((total, installment) => {
+                            return total + (installment.amount || 0);
+                        }, 0);
+                        account.totalPaidAmount = totalPaidAmount;
+                    }
+
+                    if (account.installmentList && account.installmentList.length > 0) {
+                        account.installment = account.installmentList[0];
+                    } else {
+                        account.installment = null;
+                    }
+                    delete account.installmentList;
+                    return account;
+                })
+            );
 
             return parsed;
         } catch (error) {
