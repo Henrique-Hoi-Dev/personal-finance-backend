@@ -11,10 +11,23 @@ const createSchema = Joi.object({
         'any.required': 'Nome é obrigatório'
     }),
     type: Joi.string()
-        .valid('FIXED', 'LOAN', 'CREDIT_CARD', 'DEBIT_CARD', 'SUBSCRIPTION', 'INSURANCE', 'TAX', 'PENSION', 'EDUCATION', 'HEALTH', 'OTHER')
+        .valid(
+            'FIXED',
+            'LOAN',
+            'CREDIT_CARD',
+            'DEBIT_CARD',
+            'SUBSCRIPTION',
+            'INSURANCE',
+            'TAX',
+            'PENSION',
+            'EDUCATION',
+            'HEALTH',
+            'OTHER'
+        )
         .required()
         .messages({
-            'any.only': 'Tipo deve ser FIXED, LOAN, CREDIT_CARD, DEBIT_CARD, SUBSCRIPTION, INSURANCE, TAX, PENSION, EDUCATION, HEALTH ou OTHER',
+            'any.only':
+                'Tipo deve ser FIXED, LOAN, CREDIT_CARD, DEBIT_CARD, SUBSCRIPTION, INSURANCE, TAX, PENSION, EDUCATION, HEALTH ou OTHER',
             'any.required': 'Tipo é obrigatório'
         }),
     startDate: Joi.date().iso().required().messages({
@@ -72,6 +85,17 @@ const createSchema = Joi.object({
         'number.integer': 'Ano de referência deve ser um número inteiro',
         'number.min': 'Ano de referência deve ser maior ou igual a 2020',
         'number.max': 'Ano de referência deve ser menor ou igual a 2100'
+    }),
+    closingDate: Joi.number().integer().min(1).max(31).optional().messages({
+        'number.base': 'Dia de fechamento deve ser um número',
+        'number.integer': 'Dia de fechamento deve ser um número inteiro',
+        'number.min': 'Dia de fechamento deve ser entre 1 e 31',
+        'number.max': 'Dia de fechamento deve ser entre 1 e 31'
+    }),
+    creditLimit: Joi.number().integer().min(0).optional().messages({
+        'number.base': 'Limite do cartão deve ser um número inteiro',
+        'number.integer': 'Limite do cartão deve ser um número inteiro (centavos)',
+        'number.min': 'Limite do cartão deve ser maior ou igual a 0 centavos'
     })
 }).custom((value, helpers) => {
     // Validação customizada para empréstimos
@@ -88,12 +112,39 @@ const createSchema = Joi.object({
             });
         }
     }
+    // Validação customizada para contas fixas (FIXA)
+    if (value.type === 'FIXED' && value.installments) {
+        if (!value.installmentAmount) {
+            return helpers.error('any.custom', {
+                message: 'Para contas fixas com parcelas, o valor da parcela (installmentAmount) é obrigatório'
+            });
+        }
+        if (value.installmentAmount <= 0) {
+            return helpers.error('any.custom', {
+                message: 'Para contas fixas, o valor da parcela deve ser maior que zero'
+            });
+        }
+    }
     return value;
 });
 
 const updateSchema = Joi.object({
     name: Joi.string().min(1).max(100).optional(),
-    type: Joi.string().valid('FIXED', 'LOAN', 'CREDIT_CARD', 'DEBIT_CARD', 'SUBSCRIPTION', 'INSURANCE', 'TAX', 'PENSION', 'EDUCATION', 'HEALTH', 'OTHER').optional(),
+    type: Joi.string()
+        .valid(
+            'FIXED',
+            'LOAN',
+            'CREDIT_CARD',
+            'DEBIT_CARD',
+            'SUBSCRIPTION',
+            'INSURANCE',
+            'TAX',
+            'PENSION',
+            'EDUCATION',
+            'HEALTH',
+            'OTHER'
+        )
+        .optional(),
     startDate: Joi.date().iso().optional(),
     dueDay: Joi.number().integer().min(1).max(31).optional(),
     totalAmount: Joi.number().integer().min(0).optional(),
@@ -102,7 +153,18 @@ const updateSchema = Joi.object({
     totalWithInterest: Joi.number().integer().min(0).optional(),
     interestRate: Joi.number().integer().min(0).optional(),
     monthlyInterestRate: Joi.number().precision(2).min(0).max(999.99).optional(),
-    isPreview: Joi.boolean().optional()
+    isPreview: Joi.boolean().optional(),
+    closingDate: Joi.number().integer().min(1).max(31).optional().messages({
+        'number.base': 'Dia de fechamento deve ser um número',
+        'number.integer': 'Dia de fechamento deve ser um número inteiro',
+        'number.min': 'Dia de fechamento deve ser entre 1 e 31',
+        'number.max': 'Dia de fechamento deve ser entre 1 e 31'
+    }),
+    creditLimit: Joi.number().integer().min(0).optional().messages({
+        'number.base': 'Limite do cartão deve ser um número inteiro',
+        'number.integer': 'Limite do cartão deve ser um número inteiro (centavos)',
+        'number.min': 'Limite do cartão deve ser maior ou igual a 0 centavos'
+    })
 })
     .min(1)
     .messages({
@@ -110,7 +172,21 @@ const updateSchema = Joi.object({
     });
 
 const getAllValidation = Joi.object({
-    type: Joi.string().valid('FIXED', 'LOAN', 'CREDIT_CARD', 'DEBIT_CARD', 'SUBSCRIPTION', 'INSURANCE', 'TAX', 'PENSION', 'EDUCATION', 'HEALTH', 'OTHER').optional(),
+    type: Joi.string()
+        .valid(
+            'FIXED',
+            'LOAN',
+            'CREDIT_CARD',
+            'DEBIT_CARD',
+            'SUBSCRIPTION',
+            'INSURANCE',
+            'TAX',
+            'PENSION',
+            'EDUCATION',
+            'HEALTH',
+            'OTHER'
+        )
+        .optional(),
     name: Joi.string().min(1).max(100).optional().messages({
         'string.min': 'Nome deve ter pelo menos 1 caractere',
         'string.max': 'Nome deve ter no máximo 100 caracteres'
@@ -119,7 +195,10 @@ const getAllValidation = Joi.object({
         'boolean.base': 'Status de pagamento deve ser true ou false'
     }),
     month: Joi.number().integer().min(1).max(12).required(),
-    year: Joi.number().integer().min(2020).max(2100).required()
+    year: Joi.number().integer().min(2020).max(2100).required(),
+    excludeLinkedToCreditCard: Joi.boolean().optional().messages({
+        'boolean.base': 'excludeLinkedToCreditCard deve ser true ou false'
+    })
 });
 
 const getByIdValidation = Joi.object({
@@ -156,6 +235,35 @@ const markAsPaidValidation = Joi.object({
     })
 });
 
+const associateAccountToCreditCardValidation = Joi.object({
+    creditCardId: Joi.string().uuid().required().messages({
+        'string.guid': 'ID do cartão de crédito deve ser um UUID válido',
+        'any.required': 'ID do cartão de crédito é obrigatório'
+    }),
+    accountId: Joi.string().uuid().required().messages({
+        'string.guid': 'ID da conta deve ser um UUID válido',
+        'any.required': 'ID da conta é obrigatório'
+    })
+});
+
+const disassociateAccountFromCreditCardValidation = Joi.object({
+    creditCardId: Joi.string().uuid().required().messages({
+        'string.guid': 'ID do cartão de crédito deve ser um UUID válido',
+        'any.required': 'ID do cartão de crédito é obrigatório'
+    }),
+    accountId: Joi.string().uuid().required().messages({
+        'string.guid': 'ID da conta deve ser um UUID válido',
+        'any.required': 'ID da conta é obrigatório'
+    })
+});
+
+const getCreditCardAssociatedAccountsValidation = Joi.object({
+    creditCardId: Joi.string().uuid().required().messages({
+        'string.guid': 'ID do cartão de crédito deve ser um UUID válido',
+        'any.required': 'ID do cartão de crédito é obrigatório'
+    })
+});
+
 module.exports = {
     create: {
         body: createSchema
@@ -188,6 +296,35 @@ module.exports = {
                 'number.integer': 'Valor do pagamento deve ser um número inteiro (centavos)',
                 'number.min': 'Valor do pagamento deve ser maior que 0 centavos',
                 'any.required': 'Valor do pagamento é obrigatório'
+            })
+        })
+    },
+    associateAccountToCreditCard: {
+        params: Joi.object({
+            creditCardId: Joi.string().uuid().required().messages({
+                'string.guid': 'ID do cartão de crédito deve ser um UUID válido',
+                'any.required': 'ID do cartão de crédito é obrigatório'
+            })
+        }),
+        body: Joi.object({
+            accountId: Joi.string().uuid().required().messages({
+                'string.guid': 'ID da conta deve ser um UUID válido',
+                'any.required': 'ID da conta é obrigatório'
+            })
+        })
+    },
+    disassociateAccountFromCreditCard: {
+        params: disassociateAccountFromCreditCardValidation
+    },
+    getCreditCardAssociatedAccounts: {
+        params: getCreditCardAssociatedAccountsValidation
+    },
+
+    getPluggyAccounts: {
+        query: Joi.object({
+            itemId: Joi.string().min(1).required().messages({
+                'string.min': 'ID do item deve ter pelo menos 1 caractere',
+                'any.required': 'ID do item é obrigatório'
             })
         })
     }

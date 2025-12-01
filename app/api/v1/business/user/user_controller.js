@@ -71,6 +71,34 @@ class UserController extends BaseController {
             next(this.handleError(err));
         }
     }
+
+    async createPluggyConnectToken(req, res, next) {
+        try {
+            const userId = req.locals.user.id;
+            const { itemId } = req.body;
+
+            const data = await this._userService.createPluggyConnectToken(userId, { itemId });
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
+        } catch (err) {
+            next(this.handleError(err));
+        }
+    }
+
+    async updatePluggyItemId(req, res, next) {
+        try {
+            const userId = req.locals.user.id;
+            const { itemId } = req.body;
+
+            await this._userService.updatePluggyItemId(userId, itemId);
+            res.status(HttpStatus.status.OK).json(
+                this.parseKeysToCamelcase({
+                    message: 'Pluggy item ID atualizado com sucesso'
+                })
+            );
+        } catch (err) {
+            next(this.handleError(err));
+        }
+    }
 }
 
 module.exports = UserController;

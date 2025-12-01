@@ -187,9 +187,12 @@ class MonthlySummaryService extends BaseService {
             .reduce((sum, t) => sum + (t.value || 0), 0);
 
         // Buscar contas que têm parcelas no mês/ano especificado OU contas sem parcelas com referência no mês/ano
+        // IMPORTANTE: Excluir contas que estão vinculadas a um cartão (creditCardId IS NULL)
+        // pois essas contas são contabilizadas através das parcelas do próprio cartão
         const accountsWithInstallments = await this._accountModel.findAll({
             where: {
-                userId
+                userId,
+                creditCardId: null // Ignorar contas vinculadas ao cartão
             },
             include: [
                 {
@@ -206,12 +209,14 @@ class MonthlySummaryService extends BaseService {
         });
 
         // Buscar contas sem parcelas que têm referência no mês/ano especificado
+        // IMPORTANTE: Excluir contas que estão vinculadas a um cartão (creditCardId IS NULL)
         const accountsWithoutInstallments = await this._accountModel.findAll({
             where: {
                 userId,
                 referenceMonth: month,
                 referenceYear: year,
-                installments: null // Contas sem parcelas
+                installments: null, // Contas sem parcelas
+                creditCardId: null // Ignorar contas vinculadas ao cartão
             }
         });
 
@@ -219,30 +224,38 @@ class MonthlySummaryService extends BaseService {
         const accounts = [...accountsWithInstallments, ...accountsWithoutInstallments];
 
         // Calcular contas a pagar baseado nas parcelas do mês (independente de pagamento) e contas sem parcelas
-        const billsToPay = accounts.reduce((sum, account) => {
-            if (account.installmentList && account.installmentList.length > 0) {
-                // Conta COM parcelas: somar todas as parcelas do mês específico
-                const installmentAmount = account.installmentList.reduce((total, installment) => {
-                    return total + (installment.amount || 0);
-                }, 0);
-                return sum + installmentAmount;
-            } else {
-                // Conta SEM parcelas: somar o valor total independentemente de estar paga
-                if (account.totalAmount) {
-                    return sum + account.totalAmount;
-                }
-            }
-            return sum;
-        }, 0);
+        // Se não houver contas, billsToPay será 0
+        const billsToPay =
+            accounts.length === 0
+                ? 0
+                : accounts.reduce((sum, account) => {
+                      if (account.installmentList && account.installmentList.length > 0) {
+                          // Conta COM parcelas: somar todas as parcelas do mês específico
+                          const installmentAmount = account.installmentList.reduce((total, installment) => {
+                              return total + (installment.amount || 0);
+                          }, 0);
+                          return sum + installmentAmount;
+                      } else {
+                          // Conta SEM parcelas: somar o valor total independentemente de estar paga
+                          if (account.totalAmount) {
+                              return sum + account.totalAmount;
+                          }
+                      }
+                      return sum;
+                  }, 0);
 
         // Contar contas que têm parcelas não pagas no mês OU contas sem parcelas não pagas
-        const billsCount = accounts.filter((account) => {
-            if (account.installmentList && account.installmentList.length > 0) {
-                return account.installmentList.some((installment) => !installment.isPaid);
-            } else {
-                return !account.isPaid;
-            }
-        }).length;
+        // Se não houver contas, billsCount será 0
+        const billsCount =
+            accounts.length === 0
+                ? 0
+                : accounts.filter((account) => {
+                      if (account.installmentList && account.installmentList.length > 0) {
+                          return account.installmentList.some((installment) => !installment.isPaid);
+                      } else {
+                          return !account.isPaid;
+                      }
+                  }).length;
 
         const totalBalance = totalIncome - totalExpenses;
 

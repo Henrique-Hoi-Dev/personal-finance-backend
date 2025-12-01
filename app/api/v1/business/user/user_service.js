@@ -2,17 +2,17 @@ const BaseService = require('../../base/base_service');
 const UserModel = require('./user_model');
 const bcrypt = require('bcrypt');
 const { generateTokenUser } = require('../../../../utils/jwt');
-const UserAvatar = require('./user_avatar_model');
-const path = require('path');
 const fs = require('fs');
 const UserAvatarModel = require('./user_avatar_model');
 const { validatePasswordStrength } = require('../../../../utils/password-validator');
+const PluggyClientIntegration = require('../../../../provider/pluggy/pluggy_client');
 
 class UserService extends BaseService {
     constructor() {
         super();
         this._userModel = UserModel;
         this._userAvatarModel = UserAvatarModel;
+        this._pluggyClientIntegration = new PluggyClientIntegration();
     }
 
     async getById(id) {
@@ -183,6 +183,7 @@ class UserService extends BaseService {
                 last_login: userData.last_login,
                 default_currency: userData.default_currency,
                 preferred_language: userData.preferred_language,
+                pluggy_item_id: userData.pluggy_item_id,
                 avatar_url: avatarId
             };
         } catch (error) {
@@ -225,6 +226,7 @@ class UserService extends BaseService {
                 last_login: user.last_login,
                 default_currency: user.default_currency,
                 preferred_language: user.preferred_language,
+                pluggy_item_id: user.pluggy_item_id,
                 avatar_id: avatar.id
             };
         } catch (error) {
@@ -370,6 +372,76 @@ class UserService extends BaseService {
                 throw error;
             }
             throw new Error('USER_LOGOUT_ERROR');
+        }
+    }
+
+    /**
+     * Cria um Connect Token do Pluggy para o usuário
+     * @param {string} userId - ID do usuário
+     * @param {Object} options - Opções para criação do token
+     * @param {string} options.itemId - ID do item para atualização (opcional)
+     * @returns {Promise<Object>} Dados do connect token
+     */
+    async createPluggyConnectToken(userId, options = {}) {
+        try {
+            const { itemId } = options;
+
+            const payload = {
+                clientUserId: String(userId)
+            };
+            if (itemId) {
+                payload.itemId = itemId;
+            }
+
+            const response = await this._pluggyClientIntegration.createConnectToken(payload);
+            const responseData = response.data;
+
+            return responseData;
+        } catch (error) {
+            throw new Error('PLUGGY_CONNECT_TOKEN_CREATION_ERROR');
+        }
+    }
+
+    /**
+     * Atualiza o itemId do Pluggy para o usuário
+     * @param {string} userId - ID do usuário
+     * @param {string} itemId - ID do item do Pluggy
+     * @returns {Promise<void>}
+     */
+    async updatePluggyItemId(userId, itemId) {
+        try {
+            const user = await this.getById(userId);
+            if (!user) {
+                throw new Error('USER_NOT_FOUND');
+            }
+
+            await user.update({ pluggy_item_id: itemId });
+        } catch (error) {
+            if (error.message === 'USER_NOT_FOUND') {
+                throw error;
+            }
+            throw new Error('PLUGGY_ITEM_ID_UPDATE_ERROR');
+        }
+    }
+
+    /**
+     * Obtém o itemId do Pluggy do usuário
+     * @param {string} userId - ID do usuário
+     * @returns {Promise<string|null>} ID do item do Pluggy ou null
+     */
+    async getPluggyItemId(userId) {
+        try {
+            const user = await this.getById(userId);
+            if (!user) {
+                throw new Error('USER_NOT_FOUND');
+            }
+
+            return user.pluggy_item_id || null;
+        } catch (error) {
+            if (error.message === 'USER_NOT_FOUND') {
+                throw error;
+            }
+            throw new Error('PLUGGY_ITEM_ID_FETCH_ERROR');
         }
     }
 }

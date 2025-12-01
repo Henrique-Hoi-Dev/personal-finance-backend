@@ -23,6 +23,11 @@ class InstallmentService extends BaseService {
     }
 
     async delete(id) {
+        // Desabilitado: não é permitido deletar parcelas individuais
+        // Para remover parcelas, delete a conta inteira
+        throw new Error('INSTALLMENT_INDIVIDUAL_DELETION_NOT_ALLOWED');
+
+        /* Código desabilitado - manter comentado para referência futura
         try {
             const installmentToDelete = await this._installmentModel.findByPk(id);
             if (!installmentToDelete) {
@@ -40,6 +45,22 @@ class InstallmentService extends BaseService {
                 throw new Error('ACCOUNT_NOT_FOUND');
             }
 
+            // IMPORTANTE: Buscar TODAS as parcelas ANTES de deletar para coletar todos os meses afetados
+            const allInstallments = await this._installmentModel.findAll({
+                where: { accountId },
+                attributes: ['id', 'referenceMonth', 'referenceYear'],
+                order: [
+                    ['number', 'ASC'],
+                    ['created_at', 'ASC']
+                ]
+            });
+
+            // Coletar todos os meses que tinham parcelas ANTES de deletar
+            const affectedMonths = new Set();
+            allInstallments.forEach((inst) => {
+                affectedMonths.add(`${inst.referenceYear}-${inst.referenceMonth}`);
+            });
+
             const remainingInstallments = await this._installmentModel.findAll({
                 where: {
                     accountId,
@@ -54,22 +75,42 @@ class InstallmentService extends BaseService {
             await this._installmentModel.destroy({ where: { id } });
 
             if (remainingInstallments.length === 0) {
-                // Recalcular monthly summary após exclusão da parcela
-                try {
-                    await this._monthlySummaryService.calculateMonthlySummary(
-                        account.userId,
-                        installmentToDelete.referenceMonth,
-                        installmentToDelete.referenceYear,
-                        true // forceRecalculate
-                    );
-                } catch (summaryError) {
-                    console.warn('Erro ao recalcular monthly summary após exclusão de parcela:', summaryError.message);
+                // Recalcular monthly summaries de todos os meses que tinham parcelas
+                for (const monthKey of affectedMonths) {
+                    try {
+                        const [year, month] = monthKey.split('-').map(Number);
+                        await this._monthlySummaryService.calculateMonthlySummary(
+                            account.userId,
+                            month,
+                            year,
+                            true // forceRecalculate
+                        );
+                    } catch (summaryError) {
+                        console.warn(
+                            `Erro ao recalcular monthly summary para ${month}/${year} após exclusão de parcela:`,
+                            summaryError.message
+                        );
+                    }
                 }
                 return true;
             }
 
-            const totalAccountAmount = account.totalAmount;
-            const newAmountPerInstallment = Math.round(totalAccountAmount / remainingInstallments.length);
+            // Para contas FIXA, manter o installmentAmount original
+            // Para outros tipos, recalcular dividindo totalAmount
+            let newAmountPerInstallment;
+            if (account.type === 'FIXED' && account.installmentAmount) {
+                // FIXA: manter o valor da parcela original
+                newAmountPerInstallment = Math.round(account.installmentAmount);
+                // Atualizar totalAmount da conta
+                const newTotalAmount = Math.round(account.installmentAmount * remainingInstallments.length);
+                await account.update({ totalAmount: newTotalAmount });
+            } else {
+                // Outros tipos: recalcular dividindo totalAmount
+                const totalAccountAmount = account.totalAmount;
+                newAmountPerInstallment = Math.round(totalAccountAmount / remainingInstallments.length);
+            }
+
+            // Atualizar parcelas restantes (renumerar e ajustar valores)
             for (let i = 0; i < remainingInstallments.length; i++) {
                 const installment = remainingInstallments[i];
                 installment.number = i + 1;
@@ -77,16 +118,27 @@ class InstallmentService extends BaseService {
                 await installment.save();
             }
 
-            // Recalcular monthly summary após exclusão da parcela
-            try {
-                await this._monthlySummaryService.calculateMonthlySummary(
-                    account.userId,
-                    installmentToDelete.referenceMonth,
-                    installmentToDelete.referenceYear,
-                    true // forceRecalculate
-                );
-            } catch (summaryError) {
-                console.warn('Erro ao recalcular monthly summary após exclusão de parcela:', summaryError.message);
+            // Atualizar número de parcelas da conta
+            await account.update({ installments: remainingInstallments.length });
+
+            // Recalcular monthly summaries de TODOS os meses que tinham parcelas originalmente
+            // Isso garante que se você deletar a última parcela de outubro, outubro será recalculado
+            // e não encontrará mais parcelas, então o valor será 0
+            for (const monthKey of affectedMonths) {
+                try {
+                    const [year, month] = monthKey.split('-').map(Number);
+                    await this._monthlySummaryService.calculateMonthlySummary(
+                        account.userId,
+                        month,
+                        year,
+                        true // forceRecalculate
+                    );
+                } catch (summaryError) {
+                    console.warn(
+                        `Erro ao recalcular monthly summary para ${month}/${year} após exclusão de parcela:`,
+                        summaryError.message
+                    );
+                }
             }
 
             return true;
@@ -100,6 +152,7 @@ class InstallmentService extends BaseService {
             }
             throw new Error('INSTALLMENT_DELETION_ERROR');
         }
+        */
     }
 
     async markAsPaidInstance(installment) {
@@ -222,19 +275,100 @@ class InstallmentService extends BaseService {
             const installmentAmount = totalAmount / installments;
             const installmentsToCreate = [];
 
-            for (let i = 1; i <= installments; i++) {
-                const dueDate = new Date(startDate);
-                dueDate.setMonth(dueDate.getMonth() + (i - 1));
-                dueDate.setDate(dueDay);
+            // Parse startDate de forma consistente (assumindo formato YYYY-MM-DD)
+            const startDateParts = typeof startDate === 'string' ? startDate.split('-') : null;
+            const baseDate = startDateParts
+                ? new Date(
+                      Date.UTC(
+                          parseInt(startDateParts[0]),
+                          parseInt(startDateParts[1]) - 1,
+                          parseInt(startDateParts[2])
+                      )
+                  )
+                : new Date(startDate);
 
-                const referenceMonth = dueDate.getMonth() + 1; // getMonth() retorna 0-11, precisamos 1-12
-                const referenceYear = dueDate.getFullYear();
+            for (let i = 1; i <= installments; i++) {
+                // Criar data usando UTC para evitar problemas de timezone
+                const dueDate = new Date(baseDate);
+                dueDate.setUTCMonth(dueDate.getUTCMonth() + (i - 1));
+                dueDate.setUTCDate(dueDay);
+
+                // Usar UTC para garantir consistência
+                const referenceMonth = dueDate.getUTCMonth() + 1; // getUTCMonth() retorna 0-11, precisamos 1-12
+                const referenceYear = dueDate.getUTCFullYear();
+                const actualDueDay = dueDate.getUTCDate(); // Dia real após possível ajuste do JavaScript
+
+                // Converter para formato DATEONLY (YYYY-MM-DD) para salvar no banco
+                const dueDateString = `${referenceYear}-${String(referenceMonth).padStart(2, '0')}-${String(actualDueDay).padStart(2, '0')}`;
 
                 installmentsToCreate.push({
                     accountId,
                     number: i,
-                    dueDate,
+                    dueDate: dueDateString,
                     amount: installmentAmount,
+                    isPaid: false,
+                    referenceMonth,
+                    referenceYear
+                });
+            }
+
+            const createdInstallments = [];
+            for (const installmentData of installmentsToCreate) {
+                const installment = await this._installmentModel.create(installmentData);
+                createdInstallments.push(installment);
+            }
+
+            return createdInstallments;
+        } catch (error) {
+            throw new Error('INSTALLMENT_PAYMENT_ERROR');
+        }
+    }
+
+    /**
+     * Cria parcelas usando o valor da parcela diretamente (sem dividir totalAmount)
+     * Usado para contas FIXA onde installmentAmount é fornecido diretamente
+     * @param {string} accountId - ID da conta
+     * @param {number} installmentAmount - Valor de cada parcela em centavos
+     * @param {number} installments - Número de parcelas
+     * @param {Date|string} startDate - Data de início
+     * @param {number} dueDay - Dia de vencimento (1-31)
+     * @returns {Promise<Array>} - Array de parcelas criadas
+     */
+    async createInstallmentsFromAmount(accountId, installmentAmount, installments, startDate, dueDay) {
+        try {
+            const installmentsToCreate = [];
+
+            // Parse startDate de forma consistente (assumindo formato YYYY-MM-DD)
+            const startDateParts = typeof startDate === 'string' ? startDate.split('-') : null;
+            const baseDate = startDateParts
+                ? new Date(
+                      Date.UTC(
+                          parseInt(startDateParts[0]),
+                          parseInt(startDateParts[1]) - 1,
+                          parseInt(startDateParts[2])
+                      )
+                  )
+                : new Date(startDate);
+
+            for (let i = 1; i <= installments; i++) {
+                // Criar data usando UTC para evitar problemas de timezone
+                const dueDate = new Date(baseDate);
+                dueDate.setUTCMonth(dueDate.getUTCMonth() + (i - 1));
+                dueDate.setUTCDate(dueDay);
+
+                // Usar UTC para garantir consistência
+                const referenceMonth = dueDate.getUTCMonth() + 1; // getUTCMonth() retorna 0-11, precisamos 1-12
+                const referenceYear = dueDate.getUTCFullYear();
+                const actualDueDay = dueDate.getUTCDate(); // Dia real após possível ajuste do JavaScript
+
+                // Converter para formato DATEONLY (YYYY-MM-DD) para salvar no banco
+                const dueDateString = `${referenceYear}-${String(referenceMonth).padStart(2, '0')}-${String(actualDueDay).padStart(2, '0')}`;
+
+                installmentsToCreate.push({
+                    accountId,
+                    number: i,
+                    dueDate: dueDateString,
+                    amount: Math.round(installmentAmount),
                     isPaid: false,
                     referenceMonth,
                     referenceYear

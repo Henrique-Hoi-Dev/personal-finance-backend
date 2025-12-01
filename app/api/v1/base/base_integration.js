@@ -1,7 +1,9 @@
 const axios = require('axios');
 const logger = require('../../../utils/logger');
 
-const EXTERNAL_SERVICES = {};
+const EXTERNAL_SERVICES = {
+    PLUGGY: process.env.PLUGGY_BASE_URL || 'https://api.pluggy.ai'
+};
 
 class BaseIntegration {
     constructor(serviceName) {

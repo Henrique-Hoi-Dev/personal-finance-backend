@@ -59,7 +59,6 @@ class AccountController extends BaseController {
         }
     }
 
-
     async getInstallments(req, res, next) {
         try {
             const { id } = req.params;
@@ -174,6 +173,68 @@ class AccountController extends BaseController {
         try {
             const userId = req.locals.user.id;
             const data = await this._monthlySummaryService.recalculateAllSummaries(userId);
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
+        } catch (error) {
+            next(this.handleError(error));
+        }
+    }
+
+    /**
+     * Associa uma conta parcelada a um cartão de crédito
+     * POST /api/v1/accounts/:creditCardId/credit-card/associate
+     */
+    async associateAccountToCreditCard(req, res, next) {
+        try {
+            const { creditCardId } = req.params;
+            const { accountId } = req.body;
+            const data = await this._accountService.associateAccountToCreditCard(
+                req.locals.user.id,
+                creditCardId,
+                accountId
+            );
+            res.status(HttpStatus.status.CREATED).json(this.parseKeysToCamelcase({ data }));
+        } catch (error) {
+            next(this.handleError(error));
+        }
+    }
+
+    /**
+     * Remove a associação de uma conta parcelada de um cartão de crédito
+     * DELETE /api/v1/accounts/:creditCardId/credit-card/associate/:accountId
+     */
+    async disassociateAccountFromCreditCard(req, res, next) {
+        try {
+            const { creditCardId, accountId } = req.params;
+            await this._accountService.disassociateAccountFromCreditCard(creditCardId, accountId);
+            res.status(HttpStatus.status.NO_CONTENT).json();
+        } catch (error) {
+            next(this.handleError(error));
+        }
+    }
+
+    /**
+     * Lista todas as contas associadas a um cartão de crédito
+     * GET /api/v1/accounts/:creditCardId/credit-card/associated-accounts
+     */
+    async getCreditCardAssociatedAccounts(req, res, next) {
+        try {
+            const { creditCardId } = req.params;
+            const data = await this._accountService.getCreditCardAssociatedAccounts(req.locals.user.id, creditCardId);
+            res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
+        } catch (error) {
+            next(this.handleError(error));
+        }
+    }
+
+    /**
+     * Busca contas de um item do Pluggy
+     * GET /api/v1/accounts/pluggy/accounts
+     */
+    async getPluggyAccounts(req, res, next) {
+        try {
+            const { itemId } = req.query;
+
+            const data = await this._accountService.getPluggyAccounts(itemId);
             res.status(HttpStatus.status.OK).json(this.parseKeysToCamelcase({ data }));
         } catch (error) {
             next(this.handleError(error));

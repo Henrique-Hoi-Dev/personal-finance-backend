@@ -55,5 +55,22 @@ module.exports = {
                 .valid('pt-BR', 'en-US', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'zh-CN', 'ru-RU')
                 .optional()
         })
+    },
+
+    createPluggyConnectToken: {
+        body: Joi.object({
+            itemId: Joi.string().min(1).optional().allow(null, '').messages({
+                'string.min': 'ID do item deve ter pelo menos 1 caractere'
+            })
+        })
+    },
+
+    updatePluggyItemId: {
+        body: Joi.object({
+            itemId: Joi.string().min(1).required().messages({
+                'string.min': 'ID do item deve ter pelo menos 1 caractere',
+                'any.required': 'ID do item é obrigatório'
+            })
+        })
     }
 };

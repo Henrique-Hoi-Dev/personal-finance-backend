@@ -4,6 +4,8 @@ const InstallmentService = require('../installment/installment_service');
 const InstallmentModel = require('../installment/installment_model');
 const TransactionService = require('../transaction/transaction_service');
 const MonthlySummaryService = require('../monthly_summary/monthly_summary_service');
+const CreditCardItemModel = require('./credit_card_item_model');
+const PluggyClientIntegration = require('../../../../provider/pluggy/pluggy_client');
 const { Op } = require('sequelize');
 
 class AccountService extends BaseService {
@@ -14,6 +16,8 @@ class AccountService extends BaseService {
         this._installmentModel = InstallmentModel;
         this._transactionService = new TransactionService();
         this._monthlySummaryService = new MonthlySummaryService();
+        this._creditCardItemModel = CreditCardItemModel;
+        this._pluggyClientIntegration = new PluggyClientIntegration();
     }
 
     async getById(id) {
@@ -23,7 +27,16 @@ class AccountService extends BaseService {
                     {
                         model: this._installmentModel,
                         as: 'installmentList',
-                        attributes: ['id', 'number', 'amount', 'dueDate', 'isPaid', 'paidAt'],
+                        attributes: [
+                            'id',
+                            'number',
+                            'amount',
+                            'dueDate',
+                            'isPaid',
+                            'paidAt',
+                            'referenceMonth',
+                            'referenceYear'
+                        ],
                         required: false,
                         separate: true,
                         order: [
@@ -45,7 +58,10 @@ class AccountService extends BaseService {
                     'interestRate',
                     'monthlyInterestRate',
                     'installmentAmount',
-                    'isPreview'
+                    'isPreview',
+                    'closingDate',
+                    'creditLimit',
+                    'creditCardId'
                 ]
             });
 
@@ -65,9 +81,37 @@ class AccountService extends BaseService {
 
                     account.dataValues.amountPaid = amountPaid;
                 }
+
+                // Para cartões de crédito, adicionar breakdown em cada parcela
+                if (account.type === 'CREDIT_CARD') {
+                    try {
+                        await this._addBreakdownToInstallments(id, account.installmentList);
+                    } catch (breakdownError) {
+                        console.error('Erro ao adicionar breakdown:', breakdownError);
+                    }
+                }
             }
             if (!account) {
                 throw new Error('ACCOUNT_NOT_FOUND');
+            }
+
+            // Para cartões de crédito, garantir que breakdown seja serializado
+            if (account.type === 'CREDIT_CARD' && account.installmentList) {
+                // Converter cada parcela para JSON e adicionar breakdown se existir
+                account.installmentList = account.installmentList.map((inst) => {
+                    // Primeiro pegar o breakdown antes de converter para JSON
+                    const breakdown = inst.breakdown || (inst.dataValues && inst.dataValues.breakdown);
+
+                    // Converter para JSON
+                    const instJson = inst.toJSON ? inst.toJSON() : { ...inst };
+
+                    // Adicionar breakdown ao JSON (garantir que seja incluído)
+                    if (breakdown) {
+                        instJson.breakdown = breakdown;
+                    }
+
+                    return instJson;
+                });
             }
 
             return account;
@@ -87,10 +131,22 @@ class AccountService extends BaseService {
                 throw new Error('ACCOUNT_NOT_FOUND');
             }
 
-            // Buscar todas as parcelas da conta
+            // Buscar todas as parcelas da conta ANTES de deletar para coletar todos os meses afetados
             const installments = await this._installmentModel.findAll({
-                where: { accountId: id }
+                where: { accountId: id },
+                attributes: ['id', 'referenceMonth', 'referenceYear']
             });
+
+            // Coletar todos os meses que tinham parcelas ANTES de deletar
+            const affectedMonths = new Set();
+            installments.forEach((inst) => {
+                affectedMonths.add(`${inst.referenceYear}-${inst.referenceMonth}`);
+            });
+
+            // Adicionar também o mês de referência da conta (caso não tenha parcelas)
+            if (accountToDelete.referenceMonth && accountToDelete.referenceYear) {
+                affectedMonths.add(`${accountToDelete.referenceYear}-${accountToDelete.referenceMonth}`);
+            }
 
             // Excluir transações de pagamento das parcelas
             if (installments.length > 0) {
@@ -106,17 +162,25 @@ class AccountService extends BaseService {
                 });
             }
 
+            // Deletar a conta (as parcelas serão deletadas em CASCADE)
             const result = await this._accountModel.destroy({ where: { id } });
 
-            try {
-                await this._monthlySummaryService.calculateMonthlySummary(
-                    accountToDelete.userId,
-                    accountToDelete.referenceMonth,
-                    accountToDelete.referenceYear,
-                    true // forceRecalculate
-                );
-            } catch (summaryError) {
-                console.warn('Erro ao recalcular monthly summary após exclusão:', summaryError.message);
+            // Recalcular monthly summaries de TODOS os meses que tinham parcelas ou eram referência da conta
+            for (const monthKey of affectedMonths) {
+                try {
+                    const [year, month] = monthKey.split('-').map(Number);
+                    await this._monthlySummaryService.calculateMonthlySummary(
+                        accountToDelete.userId,
+                        month,
+                        year,
+                        true // forceRecalculate
+                    );
+                } catch (summaryError) {
+                    console.warn(
+                        `Erro ao recalcular monthly summary para ${month}/${year} após exclusão de conta:`,
+                        summaryError.message
+                    );
+                }
             }
 
             return result;
@@ -135,10 +199,15 @@ class AccountService extends BaseService {
                 accountData = { ...accountData, ...calculatedData };
             }
 
+            if (accountData.installmentAmount && accountData.installments) {
+                accountData.totalAmount = Math.round(accountData.installmentAmount * accountData.installments);
+            }
+
             if (!accountData.referenceMonth || !accountData.referenceYear) {
                 const startDate = new Date(accountData.startDate);
-                accountData.referenceMonth = startDate.getMonth() + 1;
-                accountData.referenceYear = startDate.getFullYear();
+
+                accountData.referenceMonth = startDate.getUTCMonth() + 1;
+                accountData.referenceYear = startDate.getUTCFullYear();
             }
 
             const account = await this._accountModel.create(accountData);
@@ -148,13 +217,24 @@ class AccountService extends BaseService {
                     accountData.type === 'LOAN' ? accountData.totalWithInterest : accountData.totalAmount;
 
                 if (amountToUse) {
-                    await this._installmentService.createInstallments(
-                        account.id,
-                        amountToUse,
-                        account.installments,
-                        account.startDate,
-                        account.dueDay
-                    );
+                    // Para FIXA, usar installmentAmount diretamente ao invés de dividir totalAmount
+                    if (accountData.type === 'FIXED' && accountData.installmentAmount) {
+                        await this._installmentService.createInstallmentsFromAmount(
+                            account.id,
+                            accountData.installmentAmount,
+                            account.installments,
+                            account.startDate,
+                            account.dueDay
+                        );
+                    } else {
+                        await this._installmentService.createInstallments(
+                            account.id,
+                            amountToUse,
+                            account.installments,
+                            account.startDate,
+                            account.dueDay
+                        );
+                    }
                 }
             }
 
@@ -197,13 +277,34 @@ class AccountService extends BaseService {
                 }
             }
 
+            // Para contas FIXA com parcelas, calcular totalAmount a partir de installmentAmount
+            const accountType = updateData.type || existingAccount.type;
+            if (accountType === 'FIXED') {
+                // Se installmentAmount foi fornecido no update, usar ele
+                const installmentAmountToUse = updateData.installmentAmount || existingAccount.installmentAmount;
+                const installmentsToUse = updateData.installments || existingAccount.installments;
+
+                if (installmentAmountToUse && installmentsToUse) {
+                    updateData.totalAmount = Math.round(installmentAmountToUse * installmentsToUse);
+                    // Garantir que installmentAmount seja salvo se foi fornecido
+                    if (updateData.installmentAmount) {
+                        updateData.installmentAmount = installmentAmountToUse;
+                    }
+                }
+            }
+
             // Atualizar a conta
             await this._accountModel.update(updateData, {
                 where: { id }
             });
 
             // Se mudou o número de parcelas ou valores, recriar as parcelas
-            if (updateData.installments || updateData.totalAmount || updateData.totalWithInterest) {
+            if (
+                updateData.installments ||
+                updateData.totalAmount ||
+                updateData.totalWithInterest ||
+                updateData.installmentAmount
+            ) {
                 // Deletar parcelas existentes
                 await this._installmentModel.destroy({
                     where: { accountId: id }
@@ -216,13 +317,24 @@ class AccountService extends BaseService {
                         updatedAccount.type === 'LOAN' ? updatedAccount.totalWithInterest : updatedAccount.totalAmount;
 
                     if (amountToUse) {
-                        await this._installmentService.createInstallments(
-                            updatedAccount.id,
-                            amountToUse,
-                            updatedAccount.installments,
-                            updatedAccount.startDate,
-                            updatedAccount.dueDay
-                        );
+                        // Para FIXA, usar installmentAmount diretamente ao invés de dividir totalAmount
+                        if (updatedAccount.type === 'FIXED' && updatedAccount.installmentAmount) {
+                            await this._installmentService.createInstallmentsFromAmount(
+                                updatedAccount.id,
+                                updatedAccount.installmentAmount,
+                                updatedAccount.installments,
+                                updatedAccount.startDate,
+                                updatedAccount.dueDay
+                            );
+                        } else {
+                            await this._installmentService.createInstallments(
+                                updatedAccount.id,
+                                amountToUse,
+                                updatedAccount.installments,
+                                updatedAccount.startDate,
+                                updatedAccount.dueDay
+                            );
+                        }
                     }
                 }
             }
@@ -436,6 +548,8 @@ class AccountService extends BaseService {
                 where.isPaid = isPaid === 'true' || isPaid === true;
             }
 
+            where.creditCardId = { [Op.is]: null };
+
             const accounts = await this._accountModel.findAll({
                 where,
                 order: [['created_at', 'DESC']],
@@ -522,8 +636,8 @@ class AccountService extends BaseService {
             });
 
             const currentDate = new Date();
-            const currentMonth = currentDate.getMonth();
-            const currentYear = currentDate.getFullYear();
+            const currentMonth = currentDate.getUTCMonth();
+            const currentYear = currentDate.getUTCFullYear();
             const currentDay = currentDate.getDate();
 
             let updatedAccounts = [];
@@ -531,8 +645,8 @@ class AccountService extends BaseService {
 
             for (const account of fixedAccounts) {
                 const startDate = new Date(account.startDate);
-                const startMonth = startDate.getMonth();
-                const startYear = startDate.getFullYear();
+                const startMonth = startDate.getUTCMonth();
+                const startYear = startDate.getUTCFullYear();
 
                 const monthsPassed = (currentYear - startYear) * 12 + (currentMonth - startMonth);
 
@@ -853,6 +967,741 @@ class AccountService extends BaseService {
                 throw error;
             }
             throw new Error('ACCOUNT_TEMPORAL_UPDATE_ERROR');
+        }
+    }
+
+    /**
+     * Associa uma conta parcelada a um cartão de crédito
+     * @param {string} creditCardId - ID do cartão de crédito
+     * @param {string} accountId - ID da conta parcelada a ser associada
+     * @param {string} userId - ID do usuário
+     * @returns {Promise<Object>} - Relacionamento criado
+     */
+    async associateAccountToCreditCard(userId, creditCardId, accountId) {
+        try {
+            // Verificar se o cartão de crédito existe e é do tipo CREDIT_CARD
+            const creditCard = await this._accountModel.findOne({
+                where: {
+                    id: creditCardId,
+                    userId
+                }
+            });
+            if (!creditCard) {
+                throw new Error('CREDIT_CARD_NOT_FOUND');
+            }
+            if (creditCard.type !== 'CREDIT_CARD') {
+                throw new Error('ACCOUNT_IS_NOT_CREDIT_CARD');
+            }
+
+            // Verificar se a conta a ser associada existe
+            const account = await this._accountModel.findOne({
+                where: {
+                    id: accountId,
+                    userId
+                }
+            });
+            if (!account) {
+                throw new Error('ACCOUNT_NOT_FOUND');
+            }
+            // Verificar se a conta tem parcelas OU totalAmount
+            if ((!account.installments || account.installments === 0) && !account.totalAmount) {
+                throw new Error('ACCOUNT_HAS_NO_INSTALLMENTS_OR_TOTAL_AMOUNT');
+            }
+
+            const existingItem = await this._creditCardItemModel.findOne({
+                where: {
+                    creditCardId,
+                    accountId
+                }
+            });
+
+            if (existingItem) {
+                throw new Error('ACCOUNT_ALREADY_ASSOCIATED');
+            }
+
+            const creditCardItem = await this._creditCardItemModel.create({
+                creditCardId,
+                accountId
+            });
+
+            await account.update({
+                creditCardId: creditCardItem.id
+            });
+
+            try {
+                await this._recalculateCreditCardInstallments(creditCardId);
+            } catch (recalcError) {
+                // Se o erro de recálculo for específico, propagar
+                if (
+                    recalcError.message === 'CREDIT_CARD_NOT_FOUND' ||
+                    recalcError.message === 'CREDIT_CARD_INSTALLMENTS_RECALCULATION_ERROR'
+                ) {
+                    throw recalcError;
+                }
+                // Log do erro para debug, mas não falhar a associação
+                console.error('Erro ao recalcular parcelas do cartão após associação:', recalcError);
+                // Não relançar o erro para não quebrar a associação
+                // A associação foi criada com sucesso, o recálculo pode ser feito depois
+            }
+
+            return creditCardItem;
+        } catch (error) {
+            if (
+                error.message === 'CREDIT_CARD_NOT_FOUND' ||
+                error.message === 'ACCOUNT_IS_NOT_CREDIT_CARD' ||
+                error.message === 'ACCOUNT_NOT_FOUND' ||
+                error.message === 'ACCOUNT_HAS_NO_INSTALLMENTS_OR_TOTAL_AMOUNT' ||
+                error.message === 'ACCOUNT_ALREADY_ASSOCIATED' ||
+                error.message === 'CREDIT_CARD_INSTALLMENTS_RECALCULATION_ERROR'
+            ) {
+                throw error;
+            }
+            // Log do erro original para debug
+            console.error('Erro ao associar conta ao cartão:', error);
+            throw new Error('CREDIT_CARD_ASSOCIATION_ERROR');
+        }
+    }
+
+    /**
+     * Remove a associação de uma conta parcelada de um cartão de crédito
+     * @param {string} creditCardId - ID do cartão de crédito
+     * @param {string} accountId - ID da conta parcelada a ser desassociada
+     * @returns {Promise<boolean>} - true se removido com sucesso
+     */
+    async disassociateAccountFromCreditCard(creditCardId, accountId) {
+        try {
+            // Verificar se o relacionamento existe
+            const creditCardItem = await this._creditCardItemModel.findOne({
+                where: {
+                    creditCardId,
+                    accountId
+                }
+            });
+
+            if (!creditCardItem) {
+                throw new Error('ASSOCIATION_NOT_FOUND');
+            }
+
+            // Remover o relacionamento
+            await creditCardItem.destroy();
+
+            // Remover o campo creditCardId da conta
+            const account = await this._accountModel.findByPk(accountId);
+            if (account) {
+                await account.update({
+                    creditCardId: null
+                });
+            }
+
+            // Recalcular as parcelas do cartão de crédito
+            await this._recalculateCreditCardInstallments(creditCardId);
+
+            return true;
+        } catch (error) {
+            if (error.message === 'ASSOCIATION_NOT_FOUND') {
+                throw error;
+            }
+            throw new Error('CREDIT_CARD_DISASSOCIATION_ERROR');
+        }
+    }
+
+    /**
+     * Lista todas as contas associadas a um cartão de crédito
+     * @param {string} creditCardId - ID do cartão de crédito
+     * @returns {Promise<Array>} - Array de contas associadas
+     */
+    async getCreditCardAssociatedAccounts(userId, creditCardId) {
+        try {
+            const idsAssociatedAccounts = await this._creditCardItemModel.findAll({
+                where: { creditCardId }
+            });
+
+            const accounts = await this._accountModel.findAll({
+                where: {
+                    id: { [Op.in]: idsAssociatedAccounts.map((item) => item.accountId) },
+                    userId
+                },
+                include: [
+                    {
+                        model: this._installmentModel,
+                        as: 'installmentList'
+                    }
+                ]
+            });
+
+            return accounts;
+        } catch (error) {
+            if (error.message === 'CREDIT_CARD_NOT_FOUND' || error.message === 'ACCOUNT_IS_NOT_CREDIT_CARD') {
+                throw error;
+            }
+            throw new Error('CREDIT_CARD_ASSOCIATED_ACCOUNTS_FETCH_ERROR');
+        }
+    }
+
+    /**
+     * Recalcula as parcelas do cartão de crédito somando:
+     * - O valor fixo mensal do cartão (se houver installmentAmount)
+     * - As parcelas das contas associadas que caem naquele mês
+     * @param {string} creditCardId - ID do cartão de crédito
+     * @returns {Promise<Array>} - Array de parcelas recalculadas
+     */
+    /**
+     * Determina o mês/ano atual do cartão de crédito baseado no closingDate
+     * @private
+     * @param {Object} creditCard - Objeto do cartão de crédito
+     * @returns {Object} - { month, year } do mês atual da fatura
+     */
+    _getCurrentCreditCardMonth(creditCard) {
+        const now = new Date();
+        const currentDay = now.getDate();
+        const currentMonth = now.getUTCMonth() + 1; // 1-12
+        const currentYear = now.getUTCFullYear();
+
+        // Se não tem closingDate, usar referenceMonth/referenceYear do cartão ou mês atual
+        if (!creditCard.closingDate) {
+            return {
+                month: creditCard.referenceMonth || currentMonth,
+                year: creditCard.referenceYear || currentYear
+            };
+        }
+
+        // Se o dia atual é menor ou igual ao closingDate, está no mês atual
+        // Se o dia atual é maior que o closingDate, está no próximo mês
+        if (currentDay <= creditCard.closingDate) {
+            return { month: currentMonth, year: currentYear };
+        } else {
+            // Próximo mês
+            let nextMonth = currentMonth + 1;
+            let nextYear = currentYear;
+            if (nextMonth > 12) {
+                nextMonth = 1;
+                nextYear += 1;
+            }
+            return { month: nextMonth, year: nextYear };
+        }
+    }
+
+    /**
+     * Formata data como YYYY-MM-DD sem problemas de timezone
+     * @private
+     * @param {number} year - Ano
+     * @param {number} month - Mês (1-12)
+     * @param {number} day - Dia (1-31)
+     * @returns {string} - Data formatada YYYY-MM-DD
+     */
+    _formatDateString(year, month, day) {
+        return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    }
+
+    /**
+     * Adiciona breakdown (composição) em cada parcela do cartão de crédito
+     * @private
+     * @param {string} creditCardId - ID do cartão de crédito
+     * @param {Array} installments - Array de parcelas do cartão
+     * @returns {Promise<void>}
+     */
+    async _addBreakdownToInstallments(creditCardId, installments) {
+        if (!installments || installments.length === 0) {
+            return;
+        }
+
+        try {
+            const creditCard = await this._accountModel.findByPk(creditCardId, {
+                attributes: [
+                    'id',
+                    'name',
+                    'type',
+                    'installmentAmount',
+                    'installments',
+                    'startDate',
+                    'dueDay',
+                    'closingDate'
+                ]
+            });
+
+            if (!creditCard || creditCard.type !== 'CREDIT_CARD') {
+                return;
+            }
+
+            // Buscar todas as contas associadas ao cartão
+            const creditCardItems = await this._creditCardItemModel.findAll({
+                where: { creditCardId },
+                include: [
+                    {
+                        model: this._accountModel,
+                        as: 'account',
+                        required: true,
+                        attributes: ['id', 'name', 'totalAmount', 'installments', 'startDate', 'dueDay']
+                    }
+                ]
+            });
+
+            const accountIds = creditCardItems.map((item) => item.accountId);
+
+            // Buscar parcelas das contas associadas
+            const associatedAccountsInstallments =
+                accountIds.length > 0
+                    ? await this._installmentModel.findAll({
+                          where: {
+                              accountId: { [Op.in]: accountIds }
+                          },
+                          attributes: [
+                              'id',
+                              'number',
+                              'amount',
+                              'dueDate',
+                              'referenceMonth',
+                              'referenceYear',
+                              'accountId'
+                          ],
+                          include: [
+                              {
+                                  model: this._accountModel,
+                                  as: 'account',
+                                  attributes: ['id', 'name']
+                              }
+                          ],
+                          order: [['dueDate', 'ASC']]
+                      })
+                    : [];
+
+            // Buscar contas sem parcelas
+            const accountsWithoutInstallments = await this._accountModel.findAll({
+                where: {
+                    id: { [Op.in]: accountIds },
+                    installments: { [Op.or]: [null, 0] }
+                },
+                attributes: ['id', 'name', 'totalAmount', 'referenceMonth', 'referenceYear', 'startDate', 'dueDay']
+            });
+
+            // Criar Map para agrupar parcelas das contas associadas por mês/ano
+            const installmentsByMonthAndAccount = new Map();
+            for (const installment of associatedAccountsInstallments) {
+                const key = `${installment.referenceYear}-${installment.referenceMonth}`;
+                const accountKey = `${installment.accountId}-${key}`;
+
+                if (!installmentsByMonthAndAccount.has(accountKey)) {
+                    installmentsByMonthAndAccount.set(accountKey, {
+                        accountId: installment.accountId,
+                        accountName: installment.account?.name || 'Conta sem nome',
+                        month: installment.referenceMonth,
+                        year: installment.referenceYear,
+                        installments: []
+                    });
+                }
+
+                installmentsByMonthAndAccount.get(accountKey).installments.push({
+                    number: installment.number,
+                    amount: installment.amount,
+                    dueDate: installment.dueDate
+                });
+            }
+
+            // Determinar o mês atual do cartão baseado no closingDate
+            const currentCardMonth = this._getCurrentCreditCardMonth(creditCard);
+
+            // Criar Map para contas sem parcelas por mês/ano
+            // Contas sem parcelas vão para o mês de referência da conta (referenceMonth/referenceYear)
+            // Se não tiver referência, usar o mês atual do cartão
+            const accountsWithoutInstallmentsByMonth = new Map();
+
+            for (const account of accountsWithoutInstallments) {
+                // Usar o mês de referência da conta se existir, senão usar o mês atual do cartão
+                let targetMonth, targetYear;
+                if (account.referenceMonth && account.referenceYear) {
+                    targetMonth = account.referenceMonth;
+                    targetYear = account.referenceYear;
+                } else if (account.startDate) {
+                    // Se não tem referenceMonth/Year mas tem startDate, usar o mês da startDate
+                    const startDate = new Date(account.startDate);
+                    targetMonth = startDate.getUTCMonth() + 1;
+                    targetYear = startDate.getUTCFullYear();
+                } else {
+                    // Fallback: usar o mês atual do cartão
+                    targetMonth = currentCardMonth.month;
+                    targetYear = currentCardMonth.year;
+                }
+                const key = `${targetYear}-${targetMonth}`;
+
+                if (!accountsWithoutInstallmentsByMonth.has(key)) {
+                    accountsWithoutInstallmentsByMonth.set(key, []);
+                }
+                accountsWithoutInstallmentsByMonth.get(key).push({
+                    accountId: account.id,
+                    accountName: account.name,
+                    totalAmount: Math.round(account.totalAmount || 0)
+                });
+            }
+
+            // Calcular valor fixo mensal do cartão por mês (se houver)
+            const cardFixedAmountByMonth = new Map();
+            if (creditCard.installmentAmount && creditCard.installments && creditCard.startDate) {
+                const startDate = new Date(creditCard.startDate);
+                for (let i = 1; i <= creditCard.installments; i++) {
+                    const dueDate = new Date(startDate);
+                    dueDate.setUTCMonth(dueDate.getUTCMonth() + (i - 1));
+                    dueDate.setDate(creditCard.dueDay);
+
+                    const referenceMonth = dueDate.getUTCMonth() + 1;
+                    const referenceYear = dueDate.getUTCFullYear();
+                    const key = `${referenceYear}-${referenceMonth}`;
+
+                    cardFixedAmountByMonth.set(key, Math.round(creditCard.installmentAmount));
+                }
+            }
+
+            // Adicionar breakdown em cada parcela
+            for (const installment of installments) {
+                const monthKey = `${installment.referenceYear}-${installment.referenceMonth}`;
+                const cardFixedAmount = cardFixedAmountByMonth.get(monthKey) || 0;
+
+                const breakdown = {
+                    linkedAccounts: []
+                };
+
+                // Só adicionar cardFixedAmount se o cartão tiver valor fixo mensal configurado
+                if (cardFixedAmount > 0) {
+                    breakdown.cardFixedAmount = cardFixedAmount;
+                }
+
+                // Adicionar contas associadas que contribuem para este mês
+                for (const [accountKey, accountData] of installmentsByMonthAndAccount) {
+                    if (`${accountData.year}-${accountData.month}` === monthKey) {
+                        const totalFromAccount = accountData.installments.reduce((sum, inst) => sum + inst.amount, 0);
+                        breakdown.linkedAccounts.push({
+                            accountId: accountData.accountId,
+                            accountName: accountData.accountName,
+                            totalAmount: totalFromAccount,
+                            installments: accountData.installments
+                        });
+                    }
+                }
+
+                // Adicionar contas sem parcelas
+                // Contas sem parcelas aparecem na parcela do cartão que corresponde ao mês de referência da conta
+                // (referenceMonth/referenceYear) ou ao mês atual do cartão se não tiver referência
+                const accountsWithoutInst = accountsWithoutInstallmentsByMonth.get(monthKey) || [];
+                for (const account of accountsWithoutInst) {
+                    breakdown.linkedAccounts.push({
+                        accountId: account.accountId,
+                        accountName: account.accountName,
+                        totalAmount: account.totalAmount,
+                        installments: [] // Conta sem parcelas
+                    });
+                }
+
+                // Adicionar breakdown à parcela de múltiplas formas para garantir serialização
+                installment.dataValues.breakdown = breakdown;
+                // Adicionar diretamente no objeto também
+                installment.breakdown = breakdown;
+            }
+        } catch (error) {
+            console.error('Erro ao adicionar breakdown nas parcelas:', error);
+            console.error('Stack trace:', error.stack);
+            // Em caso de erro, não quebrar a resposta, apenas não adicionar breakdown
+        }
+    }
+
+    async _recalculateCreditCardInstallments(creditCardId) {
+        try {
+            const creditCard = await this._accountModel.findByPk(creditCardId, {
+                attributes: [
+                    'id',
+                    'userId',
+                    'type',
+                    'installmentAmount',
+                    'installments',
+                    'startDate',
+                    'dueDay',
+                    'closingDate',
+                    'referenceMonth',
+                    'referenceYear'
+                ]
+            });
+            if (!creditCard || creditCard.type !== 'CREDIT_CARD') {
+                throw new Error('CREDIT_CARD_NOT_FOUND');
+            }
+
+            // Determinar o mês atual do cartão baseado no closingDate
+            let currentCardMonth;
+            try {
+                currentCardMonth = this._getCurrentCreditCardMonth(creditCard);
+            } catch (error) {
+                console.error('Erro ao determinar mês atual do cartão:', error);
+                throw error;
+            }
+
+            // Buscar todas as contas associadas ao cartão
+            const creditCardItems = await this._creditCardItemModel.findAll({
+                where: { creditCardId },
+                include: [
+                    {
+                        model: this._accountModel,
+                        as: 'account',
+                        required: true
+                    }
+                ]
+            });
+
+            // Buscar parcelas de todas as contas associadas
+            const accountIds = creditCardItems.map((item) => item.accountId);
+            const associatedAccountsInstallments =
+                accountIds.length > 0
+                    ? await this._installmentModel.findAll({
+                          where: {
+                              accountId: { [Op.in]: accountIds }
+                          },
+                          attributes: [
+                              'id',
+                              'number',
+                              'amount',
+                              'dueDate',
+                              'referenceMonth',
+                              'referenceYear',
+                              'accountId'
+                          ],
+                          order: [['dueDate', 'ASC']]
+                      })
+                    : [];
+
+            // Buscar contas associadas completas para verificar totalAmount e startDate
+            const associatedAccounts = await this._accountModel.findAll({
+                where: {
+                    id: { [Op.in]: accountIds }
+                },
+                attributes: [
+                    'id',
+                    'totalAmount',
+                    'installments',
+                    'startDate',
+                    'dueDay',
+                    'referenceMonth',
+                    'referenceYear'
+                ]
+            });
+
+            // Agrupar parcelas por mês/ano
+            const installmentsByMonth = new Map();
+
+            // Adicionar valor fixo mensal do cartão (se houver)
+            if (creditCard.installmentAmount && creditCard.installments && creditCard.startDate && creditCard.dueDay) {
+                const startDate = new Date(creditCard.startDate);
+                // Validar se a data é válida
+                if (isNaN(startDate.getTime())) {
+                    throw new Error('CREDIT_CARD_INVALID_START_DATE');
+                }
+
+                for (let i = 1; i <= creditCard.installments; i++) {
+                    const dueDate = new Date(startDate);
+                    dueDate.setUTCMonth(dueDate.getUTCMonth() + (i - 1));
+                    dueDate.setDate(creditCard.dueDay);
+
+                    const referenceMonth = dueDate.getUTCMonth() + 1;
+                    const referenceYear = dueDate.getUTCFullYear();
+                    const key = `${referenceYear}-${referenceMonth}`;
+
+                    if (!installmentsByMonth.has(key)) {
+                        installmentsByMonth.set(key, {
+                            month: referenceMonth,
+                            year: referenceYear,
+                            dueDate: this._formatDateString(referenceYear, referenceMonth, creditCard.dueDay),
+                            amount: 0
+                        });
+                    }
+
+                    // installmentAmount pode ser DECIMAL, então precisa arredondar
+                    installmentsByMonth.get(key).amount += Math.round(creditCard.installmentAmount);
+                }
+            }
+
+            // Adicionar parcelas das contas associadas
+            // IMPORTANTE: Se a parcela da conta associada é de um mês anterior ao mês atual do cartão,
+            // ela deve ser agrupada no mês atual do cartão, não no mês da parcela original
+            for (const installment of associatedAccountsInstallments) {
+                let targetMonth = installment.referenceMonth;
+                let targetYear = installment.referenceYear;
+
+                // Comparar se a parcela é de um mês anterior ao mês atual do cartão
+                const installmentMonthValue = installment.referenceYear * 12 + installment.referenceMonth;
+                const currentCardMonthValue = currentCardMonth.year * 12 + currentCardMonth.month;
+
+                // Se a parcela é de um mês anterior ou igual ao mês atual do cartão, usar o mês atual do cartão
+                // Se a parcela é de um mês futuro, manter o mês original da parcela
+                if (installmentMonthValue <= currentCardMonthValue) {
+                    targetMonth = currentCardMonth.month;
+                    targetYear = currentCardMonth.year;
+                }
+
+                const key = `${targetYear}-${targetMonth}`;
+
+                if (!installmentsByMonth.has(key)) {
+                    // Usar dueDate baseado no mês alvo (mês atual do cartão ou mês futuro da parcela)
+                    const dueDay = creditCard.dueDay || 1;
+                    const dueDate = this._formatDateString(targetYear, targetMonth, dueDay);
+                    installmentsByMonth.set(key, {
+                        month: targetMonth,
+                        year: targetYear,
+                        dueDate: dueDate,
+                        amount: 0
+                    });
+                }
+
+                // amount já é BIGINT (centavos inteiros), não precisa Math.round
+                installmentsByMonth.get(key).amount += installment.amount || 0;
+            }
+
+            // Adicionar contas associadas que não têm parcelas mas têm totalAmount
+            for (const account of associatedAccounts) {
+                // Se a conta não tem parcelas (installments = 0 ou null) mas tem totalAmount
+                if ((!account.installments || account.installments === 0) && account.totalAmount) {
+                    // Usar o mês atual do cartão (determinado pelo closingDate)
+                    const targetMonth = currentCardMonth;
+                    // Garantir que temos um dueDay válido
+                    const dueDay = account.dueDay || creditCard.dueDay || 1;
+                    if (!dueDay || dueDay < 1 || dueDay > 31) {
+                        throw new Error('CREDIT_CARD_INVALID_DUE_DAY');
+                    }
+                    const dueDate = this._formatDateString(targetMonth.year, targetMonth.month, dueDay);
+                    const key = `${targetMonth.year}-${targetMonth.month}`;
+
+                    if (!installmentsByMonth.has(key)) {
+                        installmentsByMonth.set(key, {
+                            month: targetMonth.month,
+                            year: targetMonth.year,
+                            dueDate: dueDate,
+                            amount: 0
+                        });
+                    }
+
+                    // totalAmount pode ser DECIMAL, então precisa arredondar
+                    installmentsByMonth.get(key).amount += Math.round(account.totalAmount || 0);
+                }
+            }
+
+            // Deletar parcelas existentes do cartão
+            try {
+                await this._installmentModel.destroy({
+                    where: { accountId: creditCardId }
+                });
+            } catch (error) {
+                console.error('Erro ao deletar parcelas existentes do cartão:', error);
+                throw error;
+            }
+
+            // Criar novas parcelas baseadas nos valores agrupados
+            const installmentsToCreate = Array.from(installmentsByMonth.values())
+                .sort((a, b) => {
+                    if (a.year !== b.year) {
+                        return a.year - b.year;
+                    }
+                    return a.month - b.month;
+                })
+                .map((item, index) => ({
+                    accountId: creditCardId,
+                    number: index + 1,
+                    dueDate: item.dueDate,
+                    // amount já está em centavos (soma de valores inteiros ou arredondados)
+                    amount: item.amount,
+                    isPaid: false,
+                    referenceMonth: item.month,
+                    referenceYear: item.year
+                }));
+
+            // Validar se há parcelas para criar
+            if (installmentsToCreate.length === 0) {
+                console.warn(`Nenhuma parcela para criar no cartão ${creditCardId}`);
+                return [];
+            }
+
+            const createdInstallments = [];
+            for (const installmentData of installmentsToCreate) {
+                try {
+                    // Validar dados antes de criar
+                    if (!installmentData.dueDate || !installmentData.amount || installmentData.amount <= 0) {
+                        console.error('Dados inválidos da parcela:', installmentData);
+                        throw new Error(`Dados inválidos da parcela: ${JSON.stringify(installmentData)}`);
+                    }
+                    const installment = await this._installmentModel.create(installmentData);
+                    createdInstallments.push(installment);
+                } catch (error) {
+                    console.error('Erro ao criar parcela:', error, 'Dados:', installmentData);
+                    throw error;
+                }
+            }
+
+            // Atualizar número de parcelas e totalAmount do cartão
+            if (createdInstallments.length > 0) {
+                const totalAmount = createdInstallments.reduce((sum, installment) => {
+                    return sum + (installment.amount || 0);
+                }, 0);
+
+                await creditCard.update({
+                    installments: createdInstallments.length,
+                    totalAmount: totalAmount
+                });
+            } else {
+                await creditCard.update({
+                    installments: 0,
+                    totalAmount: 0
+                });
+            }
+
+            // Recalcular monthly summaries afetados
+            const affectedMonths = new Set();
+            installmentsToCreate.forEach((inst) => {
+                affectedMonths.add(`${inst.referenceYear}-${inst.referenceMonth}`);
+            });
+
+            for (const monthKey of affectedMonths) {
+                const [year, month] = monthKey.split('-').map(Number);
+                try {
+                    await this._monthlySummaryService.calculateMonthlySummary(
+                        creditCard.userId,
+                        month,
+                        year,
+                        true // forceRecalculate
+                    );
+                } catch (summaryError) {
+                    console.warn(`Erro ao recalcular monthly summary para ${month}/${year}:`, summaryError.message);
+                }
+            }
+
+            return createdInstallments;
+        } catch (error) {
+            // Log detalhado do erro para debug
+            console.error('Erro em _recalculateCreditCardInstallments:', {
+                creditCardId,
+                errorMessage: error.message,
+                errorStack: error.stack,
+                errorName: error.name
+            });
+
+            if (error.message === 'CREDIT_CARD_NOT_FOUND') {
+                throw error;
+            }
+            // Re-lançar o erro original com mais contexto
+            const newError = new Error('CREDIT_CARD_INSTALLMENTS_RECALCULATION_ERROR');
+            newError.originalError = error.message;
+            newError.stack = error.stack;
+            throw newError;
+        }
+    }
+
+    /**
+     * Busca contas de um item do Pluggy
+     * @param {string} itemId - ID do item do Pluggy
+     * @returns {Promise<Object>} Dados das contas
+     */
+    async getPluggyAccounts(itemId) {
+        try {
+            if (!itemId) {
+                throw new Error('PLUGGY_ITEM_ID_REQUIRED');
+            }
+
+            const response = await this._pluggyClientIntegration.getAccounts({ itemId });
+            return response.data;
+        } catch (error) {
+            throw new Error('PLUGGY_ACCOUNTS_FETCH_ERROR');
         }
     }
 }

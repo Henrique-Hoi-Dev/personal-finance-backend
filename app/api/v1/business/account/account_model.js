@@ -27,10 +27,36 @@ const Account = sequelize.define(
             }
         },
         type: {
-            type: DataTypes.ENUM('FIXED', 'LOAN', 'CREDIT_CARD', 'DEBIT_CARD', 'SUBSCRIPTION', 'INSURANCE', 'TAX', 'PENSION', 'EDUCATION', 'HEALTH', 'OTHER'),
+            type: DataTypes.ENUM(
+                'FIXED',
+                'LOAN',
+                'CREDIT_CARD',
+                'DEBIT_CARD',
+                'SUBSCRIPTION',
+                'INSURANCE',
+                'TAX',
+                'PENSION',
+                'EDUCATION',
+                'HEALTH',
+                'OTHER'
+            ),
             allowNull: false,
             validate: {
-                isIn: [['FIXED', 'LOAN', 'CREDIT_CARD', 'DEBIT_CARD', 'SUBSCRIPTION', 'INSURANCE', 'TAX', 'PENSION', 'EDUCATION', 'HEALTH', 'OTHER']]
+                isIn: [
+                    [
+                        'FIXED',
+                        'LOAN',
+                        'CREDIT_CARD',
+                        'DEBIT_CARD',
+                        'SUBSCRIPTION',
+                        'INSURANCE',
+                        'TAX',
+                        'PENSION',
+                        'EDUCATION',
+                        'HEALTH',
+                        'OTHER'
+                    ]
+                ]
             }
         },
         isPaid: {
@@ -174,6 +200,39 @@ const Account = sequelize.define(
                 max: 2100
             },
             comment: 'Ano de referência para agrupamento temporal'
+        },
+        closingDate: {
+            type: DataTypes.INTEGER,
+            allowNull: true,
+            field: 'closing_date',
+            validate: {
+                min: 1,
+                max: 31
+            },
+            comment: 'Dia do fechamento da fatura do cartão de crédito (1-31)'
+        },
+        creditLimit: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: true,
+            field: 'credit_limit',
+            validate: {
+                min: 0
+            },
+            get() {
+                const rawValue = this.getDataValue('creditLimit');
+                return rawValue !== null ? Number(rawValue) : null;
+            },
+            comment: 'Limite do cartão de crédito em centavos'
+        },
+        creditCardId: {
+            type: DataTypes.UUID,
+            allowNull: true,
+            field: 'credit_card_id',
+            references: {
+                model: 'credit_card_items',
+                key: 'id'
+            },
+            comment: 'ID do vínculo (credit_card_items) ao qual esta conta está associada'
         }
     },
     {
@@ -200,6 +259,9 @@ const Account = sequelize.define(
             },
             {
                 fields: ['user_id', 'reference_year', 'reference_month']
+            },
+            {
+                fields: ['credit_card_id']
             }
         ]
     }

@@ -71,13 +71,14 @@ router.patch(
     verifyToken,
     installmentController.markAsPaid.bind(installmentController)
 );
-router.delete(
-    '/installments/:id',
-    ensureAuthorization,
-    verifyToken,
-    validator(validation.deleteInstallment),
-    installmentController.delete.bind(installmentController)
-);
+
+// router.delete(
+//     '/installments/:id',
+//     ensureAuthorization,
+//     verifyToken,
+//     validator(validation.deleteInstallment),
+//     installmentController.delete.bind(installmentController)
+// );
 
 // ===== DASHBOARD ROUTES =====
 
@@ -139,6 +140,50 @@ router.put(
     ensureAuthorization,
     verifyToken,
     accountController.updateTemporalReference.bind(accountController)
+);
+
+// ========================================
+// CARTÃO DE CRÉDITO - ASSOCIAÇÃO DE CONTAS
+// ========================================
+
+// Associar uma conta parcelada a um cartão de crédito
+router.post(
+    '/:creditCardId/credit-card/associate',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.associateAccountToCreditCard),
+    accountController.associateAccountToCreditCard.bind(accountController)
+);
+
+// Remover associação de uma conta parcelada de um cartão de crédito
+router.delete(
+    '/:creditCardId/credit-card/associate/:accountId',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.disassociateAccountFromCreditCard),
+    accountController.disassociateAccountFromCreditCard.bind(accountController)
+);
+
+// Listar contas associadas a um cartão de crédito
+router.get(
+    '/:creditCardId/credit-card/associated-accounts',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.getCreditCardAssociatedAccounts),
+    accountController.getCreditCardAssociatedAccounts.bind(accountController)
+);
+
+// ========================================
+// PLUGGY - INTEGRAÇÃO OPEN FINANCE
+// ========================================
+
+// Buscar contas de um item do Pluggy
+router.get(
+    '/pluggy/accounts',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.getPluggyAccounts),
+    accountController.getPluggyAccounts.bind(accountController)
 );
 
 module.exports = router;

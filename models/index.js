@@ -5,6 +5,7 @@ const Account = require('../app/api/v1/business/account/account_model');
 const Transaction = require('../app/api/v1/business/transaction/transaction_model');
 const Installment = require('../app/api/v1/business/installment/installment_model');
 const MonthlySummary = require('../app/api/v1/business/monthly_summary/monthly_summary_model');
+const CreditCardItem = require('../app/api/v1/business/account/credit_card_item_model');
 
 // Define associations
 UserModel.hasOne(UserAvatar, {
@@ -85,6 +86,29 @@ MonthlySummary.belongsTo(UserModel, {
     as: 'user'
 });
 
+// CreditCardItem associations
+Account.hasMany(CreditCardItem, {
+    foreignKey: 'creditCardId',
+    as: 'creditCardItems',
+    onDelete: 'CASCADE'
+});
+
+CreditCardItem.belongsTo(Account, {
+    foreignKey: 'creditCardId',
+    as: 'creditCard'
+});
+
+Account.hasMany(CreditCardItem, {
+    foreignKey: 'accountId',
+    as: 'associatedToCreditCards',
+    onDelete: 'CASCADE'
+});
+
+CreditCardItem.belongsTo(Account, {
+    foreignKey: 'accountId',
+    as: 'account'
+});
+
 // Sync models with database
 const syncModels = async () => {
     try {
@@ -103,5 +127,6 @@ module.exports = {
     Transaction,
     Installment,
     MonthlySummary,
+    CreditCardItem,
     syncModels
 };

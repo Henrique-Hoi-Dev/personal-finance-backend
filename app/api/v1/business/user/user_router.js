@@ -45,4 +45,20 @@ router.patch(
     userController.changePassword.bind(userController)
 );
 
+router.post(
+    '/pluggy/connect-token',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.createPluggyConnectToken),
+    userController.createPluggyConnectToken.bind(userController)
+);
+
+router.patch(
+    '/pluggy/item-id',
+    ensureAuthorization,
+    verifyToken,
+    validator(validation.updatePluggyItemId),
+    userController.updatePluggyItemId.bind(userController)
+);
+
 module.exports = router;

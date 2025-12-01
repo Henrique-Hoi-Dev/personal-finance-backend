@@ -65,6 +65,11 @@ const User = sequelize.define(
             validate: {
                 isIn: [['pt-BR', 'en-US', 'es-ES', 'fr-FR', 'de-DE', 'it-IT', 'ja-JP', 'ko-KR', 'zh-CN', 'ru-RU']]
             }
+        },
+        pluggy_item_id: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            comment: 'ID do item do Pluggy associado ao usuário'
         }
     },
     {

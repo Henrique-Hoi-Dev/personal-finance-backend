@@ -69,5 +69,7 @@
     "MONTH_AND_YEAR_REQUIRED": "Month and year are required",
     "INVALID_MONTH": "Invalid month",
     "INVALID_YEAR": "Invalid year",
-    "ACCOUNTS_BY_PERIOD_FETCH_ERROR": "Error fetching accounts by period"
+    "ACCOUNTS_BY_PERIOD_FETCH_ERROR": "Error fetching accounts by period",
+    "PLUGGY_CONNECT_TOKEN_CREATION_ERROR": "Error creating Pluggy connect token",
+    "PLUGGY_CONNECT_TOKEN_NOT_FOUND": "Pluggy connect token not found"
 }
