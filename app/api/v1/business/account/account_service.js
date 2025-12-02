@@ -131,14 +131,64 @@ class AccountService extends BaseService {
                 throw new Error('ACCOUNT_NOT_FOUND');
             }
 
+            // Coletar todos os meses afetados (será usado tanto para o cartão quanto para contas vinculadas)
+            const affectedMonths = new Set();
+
+            // Se a conta sendo excluída é um cartão de crédito, excluir todas as contas vinculadas
+            if (accountToDelete.type === 'CREDIT_CARD') {
+                // Buscar todos os CreditCardItems relacionados a este cartão
+                const creditCardItems = await this._creditCardItemModel.findAll({
+                    where: { creditCardId: id }
+                });
+
+                // Para cada item, excluir a conta vinculada
+                for (const item of creditCardItems) {
+                    const linkedAccountId = item.accountId;
+
+                    // Buscar a conta vinculada para coletar informações antes de excluir
+                    const linkedAccount = await this._accountModel.findByPk(linkedAccountId);
+                    if (linkedAccount) {
+                        // Coletar meses afetados pela conta vinculada
+                        const linkedInstallments = await this._installmentModel.findAll({
+                            where: { accountId: linkedAccountId },
+                            attributes: ['id', 'referenceMonth', 'referenceYear']
+                        });
+
+                        // Adicionar meses das parcelas da conta vinculada
+                        linkedInstallments.forEach((inst) => {
+                            affectedMonths.add(`${inst.referenceYear}-${inst.referenceMonth}`);
+                        });
+
+                        // Adicionar mês de referência da conta vinculada (caso não tenha parcelas)
+                        if (linkedAccount.referenceMonth && linkedAccount.referenceYear) {
+                            affectedMonths.add(`${linkedAccount.referenceYear}-${linkedAccount.referenceMonth}`);
+                        }
+
+                        // Excluir transações das parcelas da conta vinculada
+                        if (linkedInstallments.length > 0) {
+                            const linkedInstallmentIds = linkedInstallments.map((inst) => inst.id);
+                            await this._transactionService._transactionModel.destroy({
+                                where: {
+                                    installmentId: {
+                                        [Op.in]: linkedInstallmentIds
+                                    }
+                                }
+                            });
+                        }
+
+                        // Excluir a conta vinculada (as parcelas serão deletadas em CASCADE)
+                        await this._accountModel.destroy({ where: { id: linkedAccountId } });
+                    }
+                }
+            }
+
             // Buscar todas as parcelas da conta ANTES de deletar para coletar todos os meses afetados
             const installments = await this._installmentModel.findAll({
                 where: { accountId: id },
                 attributes: ['id', 'referenceMonth', 'referenceYear']
             });
 
-            // Coletar todos os meses que tinham parcelas ANTES de deletar
-            const affectedMonths = new Set();
+            // Adicionar meses das parcelas da conta principal
             installments.forEach((inst) => {
                 affectedMonths.add(`${inst.referenceYear}-${inst.referenceMonth}`);
             });
@@ -163,6 +213,7 @@ class AccountService extends BaseService {
             }
 
             // Deletar a conta (as parcelas serão deletadas em CASCADE)
+            // Os CreditCardItems também serão deletados em CASCADE (configurado no models/index.js)
             const result = await this._accountModel.destroy({ where: { id } });
 
             // Recalcular monthly summaries de TODOS os meses que tinham parcelas ou eram referência da conta
@@ -1019,14 +1070,31 @@ class AccountService extends BaseService {
                 throw new Error('ACCOUNT_ALREADY_ASSOCIATED');
             }
 
+            // Validar e ajustar o mês de referência da conta baseado no dia de fechamento do cartão
+            // Se o cartão fecha no dia 26 de dezembro, por exemplo, e hoje é 27 de dezembro,
+            // a conta deve ser criada no mês de janeiro (próximo mês)
+            let updateData = {
+                creditCardId: null // Será atualizado depois
+            };
+
+            if (creditCard.closingDate) {
+                // Calcular o mês atual do cartão baseado no closingDate
+                const currentCardMonth = this._getCurrentCreditCardMonth(creditCard);
+
+                // Atualizar referenceMonth e referenceYear da conta para o mês correto do cartão
+                updateData.referenceMonth = currentCardMonth.month;
+                updateData.referenceYear = currentCardMonth.year;
+            }
+
             const creditCardItem = await this._creditCardItemModel.create({
                 creditCardId,
                 accountId
             });
 
-            await account.update({
-                creditCardId: creditCardItem.id
-            });
+            // Atualizar o creditCardId no updateData
+            updateData.creditCardId = creditCardItem.id;
+
+            await account.update(updateData);
 
             try {
                 await this._recalculateCreditCardInstallments(creditCardId);
@@ -1179,6 +1247,24 @@ class AccountService extends BaseService {
             }
             return { month: nextMonth, year: nextYear };
         }
+    }
+
+    /**
+     * Calcula o mês de vencimento baseado no mês de fechamento
+     * Para cartão de crédito, o vencimento é sempre no mês seguinte ao fechamento
+     * @private
+     * @param {number} closingMonth - Mês de fechamento (1-12)
+     * @param {number} closingYear - Ano de fechamento
+     * @returns {Object} - { month, year } do mês de vencimento
+     */
+    _getDueMonth(closingMonth, closingYear) {
+        let dueMonth = closingMonth + 1;
+        let dueYear = closingYear;
+        if (dueMonth > 12) {
+            dueMonth = 1;
+            dueYear += 1;
+        }
+        return { month: dueMonth, year: dueYear };
     }
 
     /**
@@ -1336,15 +1422,22 @@ class AccountService extends BaseService {
             // Calcular valor fixo mensal do cartão por mês (se houver)
             const cardFixedAmountByMonth = new Map();
             if (creditCard.installmentAmount && creditCard.installments && creditCard.startDate) {
-                const startDate = new Date(creditCard.startDate);
-                for (let i = 1; i <= creditCard.installments; i++) {
-                    const dueDate = new Date(startDate);
-                    dueDate.setUTCMonth(dueDate.getUTCMonth() + (i - 1));
-                    dueDate.setDate(creditCard.dueDay);
+                // Para cartão de crédito, usar o mês atual do cartão (mês de fechamento) como base
+                const currentCardMonth = this._getCurrentCreditCardMonth(creditCard);
+                const closingMonth = currentCardMonth.month;
+                const closingYear = currentCardMonth.year;
 
-                    const referenceMonth = dueDate.getUTCMonth() + 1;
-                    const referenceYear = dueDate.getUTCFullYear();
-                    const key = `${referenceYear}-${referenceMonth}`;
+                for (let i = 1; i <= creditCard.installments; i++) {
+                    // Calcular o mês de fechamento para esta parcela (incrementando a partir do mês atual)
+                    let parcelClosingMonth = closingMonth + (i - 1);
+                    let parcelClosingYear = closingYear;
+                    if (parcelClosingMonth > 12) {
+                        parcelClosingMonth -= 12;
+                        parcelClosingYear += 1;
+                    }
+
+                    // referenceMonth é o mês de fechamento (onde os gastos são agrupados)
+                    const key = `${parcelClosingYear}-${parcelClosingMonth}`;
 
                     cardFixedAmountByMonth.set(key, Math.round(creditCard.installmentAmount));
                 }
@@ -1485,26 +1578,37 @@ class AccountService extends BaseService {
 
             // Adicionar valor fixo mensal do cartão (se houver)
             if (creditCard.installmentAmount && creditCard.installments && creditCard.startDate && creditCard.dueDay) {
-                const startDate = new Date(creditCard.startDate);
-                // Validar se a data é válida
-                if (isNaN(startDate.getTime())) {
-                    throw new Error('CREDIT_CARD_INVALID_START_DATE');
-                }
+                // Para cartão de crédito, usar o mês atual do cartão (mês de fechamento) como base
+                // e calcular o vencimento no mês seguinte
+                const closingMonth = currentCardMonth.month;
+                const closingYear = currentCardMonth.year;
 
                 for (let i = 1; i <= creditCard.installments; i++) {
-                    const dueDate = new Date(startDate);
-                    dueDate.setUTCMonth(dueDate.getUTCMonth() + (i - 1));
-                    dueDate.setDate(creditCard.dueDay);
+                    // Calcular o mês de fechamento para esta parcela (incrementando a partir do mês atual)
+                    let parcelClosingMonth = closingMonth + (i - 1);
+                    let parcelClosingYear = closingYear;
+                    if (parcelClosingMonth > 12) {
+                        parcelClosingMonth -= 12;
+                        parcelClosingYear += 1;
+                    }
 
-                    const referenceMonth = dueDate.getUTCMonth() + 1;
-                    const referenceYear = dueDate.getUTCFullYear();
-                    const key = `${referenceYear}-${referenceMonth}`;
+                    // O mês de vencimento é sempre o mês seguinte ao fechamento
+                    const dueMonthInfo = this._getDueMonth(parcelClosingMonth, parcelClosingYear);
+
+                    // referenceMonth é o mês de fechamento (onde os gastos são agrupados)
+                    const key = `${parcelClosingYear}-${parcelClosingMonth}`;
 
                     if (!installmentsByMonth.has(key)) {
+                        // dueDate é no mês de vencimento (mês seguinte ao fechamento)
+                        const dueDate = this._formatDateString(
+                            dueMonthInfo.year,
+                            dueMonthInfo.month,
+                            creditCard.dueDay
+                        );
                         installmentsByMonth.set(key, {
-                            month: referenceMonth,
-                            year: referenceYear,
-                            dueDate: this._formatDateString(referenceYear, referenceMonth, creditCard.dueDay),
+                            month: parcelClosingMonth,
+                            year: parcelClosingYear,
+                            dueDate: dueDate,
                             amount: 0
                         });
                     }
@@ -1535,9 +1639,11 @@ class AccountService extends BaseService {
                 const key = `${targetYear}-${targetMonth}`;
 
                 if (!installmentsByMonth.has(key)) {
-                    // Usar dueDate baseado no mês alvo (mês atual do cartão ou mês futuro da parcela)
+                    // Para cartão de crédito, o dueDate é sempre no mês seguinte ao fechamento
+                    // targetMonth/targetYear é o mês de fechamento, então o vencimento é no mês seguinte
+                    const dueMonthInfo = this._getDueMonth(targetMonth, targetYear);
                     const dueDay = creditCard.dueDay || 1;
-                    const dueDate = this._formatDateString(targetYear, targetMonth, dueDay);
+                    const dueDate = this._formatDateString(dueMonthInfo.year, dueMonthInfo.month, dueDay);
                     installmentsByMonth.set(key, {
                         month: targetMonth,
                         year: targetYear,
@@ -1561,7 +1667,9 @@ class AccountService extends BaseService {
                     if (!dueDay || dueDay < 1 || dueDay > 31) {
                         throw new Error('CREDIT_CARD_INVALID_DUE_DAY');
                     }
-                    const dueDate = this._formatDateString(targetMonth.year, targetMonth.month, dueDay);
+                    // Para cartão de crédito, o dueDate é sempre no mês seguinte ao fechamento
+                    const dueMonthInfo = this._getDueMonth(targetMonth.month, targetMonth.year);
+                    const dueDate = this._formatDateString(dueMonthInfo.year, dueMonthInfo.month, dueDay);
                     const key = `${targetMonth.year}-${targetMonth.month}`;
 
                     if (!installmentsByMonth.has(key)) {
