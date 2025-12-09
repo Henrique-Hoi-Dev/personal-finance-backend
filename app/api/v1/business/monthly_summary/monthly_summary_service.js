@@ -147,13 +147,20 @@ class MonthlySummaryService extends BaseService {
 
             const currentSummary = await this.calculateMonthlySummary(userId, month, year);
 
+            const totalIncome = currentSummary.totalIncome || 0;
+            const totalExpenses = currentSummary.totalExpenses || 0;
+            const billsToPay = currentSummary.billsToPay || 0;
+
+            // Calcular sobra considerando todas as contas registradas no mês (não apenas as pagas)
+            const totalBalance = totalIncome - totalExpenses - billsToPay;
+
             return {
                 month,
                 year,
-                totalIncome: currentSummary.totalIncome || 0,
-                totalExpenses: currentSummary.totalExpenses || 0,
-                totalBalance: currentSummary.totalBalance || 0,
-                billsToPay: currentSummary.billsToPay || 0,
+                totalIncome,
+                totalExpenses,
+                totalBalance,
+                billsToPay,
                 billsCount: currentSummary.billsCount || 0,
                 status: currentSummary.status || 'GOOD'
             };
