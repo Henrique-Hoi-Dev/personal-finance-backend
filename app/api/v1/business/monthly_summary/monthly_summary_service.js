@@ -152,7 +152,7 @@ class MonthlySummaryService extends BaseService {
             const billsToPay = currentSummary.billsToPay || 0;
 
             // Calcular sobra considerando todas as contas registradas no mês (não apenas as pagas)
-            const totalBalance = totalIncome - totalExpenses - billsToPay;
+            const totalBalance = totalIncome - totalExpenses;
 
             return {
                 month,
