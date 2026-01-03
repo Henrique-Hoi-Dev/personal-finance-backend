@@ -101,10 +101,25 @@ class MonthlySummaryService extends BaseService {
      * @param {number} monthsBack - Quantos meses para trás (padrão: 12)
      * @param {number} limit - Limite de registros por página (padrão: 50)
      * @param {number} page - Página atual (padrão: 0)
-     * @returns {Promise<Object>} - Array de resumos mensais com metadados de paginação
+     * @returns {Promise<Object>} - Array de resumos mensais com metadados de paginação e mês atual em destaque
      */
     async getMonthlyComparison(userId, { limit = 50, page = 0 } = {}) {
         try {
+            // Calcular mês/ano atual
+            const now = new Date();
+            const currentMonth = now.getMonth() + 1; // 1-12
+            const currentYear = now.getFullYear();
+
+            // Buscar o resumo do mês atual separadamente (sempre em destaque)
+            let currentMonthSummary = null;
+            try {
+                currentMonthSummary = await this.calculateMonthlySummary(userId, currentMonth, currentYear, false);
+            } catch (error) {
+                // Se não existir, criar um resumo vazio ou deixar null
+                console.warn(`Erro ao buscar resumo do mês atual: ${error.message}`);
+            }
+
+            // Buscar lista paginada normalmente
             const offset = parseInt(page) * parseInt(limit);
             const { rows: summaries, count } = await this._monthlySummaryModel.findAndCountAll({
                 where: {
@@ -119,6 +134,7 @@ class MonthlySummaryService extends BaseService {
             });
 
             return {
+                currentMonth: currentMonthSummary, // Mês atual sempre em destaque
                 docs: summaries,
                 total: count,
                 limit: parseInt(limit),
