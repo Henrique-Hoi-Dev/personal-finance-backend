@@ -1096,6 +1096,19 @@ class AccountService extends BaseService {
 
             await account.update(updateData);
 
+            // Recarregar a conta para ter os dados atualizados
+            await account.reload();
+
+            // Se a conta tem parcelas, recalcular as parcelas considerando o closingDate do cartão
+            if (account.installments && account.installments > 0 && creditCard.closingDate) {
+                try {
+                    await this._recalculateLinkedAccountInstallments(account, creditCard);
+                } catch (recalcError) {
+                    console.error('Erro ao recalcular parcelas da conta vinculada:', recalcError);
+                    // Não falhar a associação se o recálculo falhar
+                }
+            }
+
             try {
                 await this._recalculateCreditCardInstallments(creditCardId);
             } catch (recalcError) {
@@ -1203,6 +1216,117 @@ class AccountService extends BaseService {
                 throw error;
             }
             throw new Error('CREDIT_CARD_ASSOCIATED_ACCOUNTS_FETCH_ERROR');
+        }
+    }
+
+    /**
+     * Recalcula as parcelas de uma conta vinculada a um cartão de crédito
+     * Considera o closingDate do cartão para determinar o mês de fechamento de cada parcela
+     * IMPORTANTE: Este método só deve ser chamado para contas vinculadas a cartões de crédito
+     * @private
+     * @param {Object} account - Conta vinculada ao cartão
+     * @param {Object} creditCard - Cartão de crédito
+     * @returns {Promise<Array>} - Array de parcelas recalculadas
+     */
+    async _recalculateLinkedAccountInstallments(account, creditCard) {
+        try {
+            // Validação de segurança: garantir que o cartão é do tipo CREDIT_CARD
+            if (!creditCard || creditCard.type !== 'CREDIT_CARD') {
+                throw new Error('Este método só pode ser usado para contas vinculadas a cartões de crédito');
+            }
+
+            // Validação: garantir que o cartão tem closingDate
+            if (!creditCard.closingDate) {
+                // Se não tem closingDate, não recalcular (manter parcelas originais)
+                return [];
+            }
+
+            // Calcular o mês atual do cartão baseado no closingDate
+            const currentCardMonth = this._getCurrentCreditCardMonth(creditCard);
+
+            // Deletar parcelas existentes da conta
+            await this._installmentModel.destroy({
+                where: { accountId: account.id }
+            });
+
+            // Se a conta não tem parcelas, não fazer nada
+            if (!account.installments || account.installments === 0) {
+                return [];
+            }
+
+            // Determinar o valor de cada parcela
+            let installmentAmount;
+            if (account.type === 'FIXED' && account.installmentAmount) {
+                installmentAmount = account.installmentAmount;
+            } else {
+                const totalAmount = account.type === 'LOAN' ? account.totalWithInterest : account.totalAmount;
+                installmentAmount = totalAmount / account.installments;
+            }
+
+            // Criar novas parcelas baseadas no mês atual do cartão
+            const installmentsToCreate = [];
+            const closingMonth = currentCardMonth.month;
+            const closingYear = currentCardMonth.year;
+
+            for (let i = 1; i <= account.installments; i++) {
+                // Calcular o mês de fechamento para esta parcela (incrementando a partir do mês atual)
+                let parcelClosingMonth = closingMonth + (i - 1);
+                let parcelClosingYear = closingYear;
+                if (parcelClosingMonth > 12) {
+                    parcelClosingMonth -= 12;
+                    parcelClosingYear += 1;
+                }
+
+                // O mês de vencimento é sempre o mês seguinte ao fechamento
+                const dueMonthInfo = this._getDueMonth(parcelClosingMonth, parcelClosingYear);
+                const dueDay = account.dueDay || creditCard.dueDay || 1;
+
+                // Criar data de vencimento
+                const dueDate = this._formatDateString(dueMonthInfo.year, dueMonthInfo.month, dueDay);
+
+                installmentsToCreate.push({
+                    accountId: account.id,
+                    number: i,
+                    dueDate: dueDate,
+                    amount: Math.round(installmentAmount),
+                    isPaid: false,
+                    // referenceMonth é o mês de fechamento (onde os gastos são agrupados)
+                    referenceMonth: parcelClosingMonth,
+                    referenceYear: parcelClosingYear
+                });
+            }
+
+            // Criar as parcelas
+            const createdInstallments = [];
+            for (const installmentData of installmentsToCreate) {
+                const installment = await this._installmentModel.create(installmentData);
+                createdInstallments.push(installment);
+            }
+
+            // Recalcular monthly summaries afetados
+            const affectedMonths = new Set();
+            installmentsToCreate.forEach((inst) => {
+                affectedMonths.add(`${inst.referenceYear}-${inst.referenceMonth}`);
+            });
+
+            for (const monthKey of affectedMonths) {
+                const [year, month] = monthKey.split('-').map(Number);
+                try {
+                    await this._monthlySummaryService.calculateMonthlySummary(
+                        account.userId,
+                        month,
+                        year,
+                        true // forceRecalculate
+                    );
+                } catch (summaryError) {
+                    console.warn(`Erro ao recalcular monthly summary para ${month}/${year}:`, summaryError.message);
+                }
+            }
+
+            return createdInstallments;
+        } catch (error) {
+            console.error('Erro ao recalcular parcelas da conta vinculada:', error);
+            throw error;
         }
     }
 
